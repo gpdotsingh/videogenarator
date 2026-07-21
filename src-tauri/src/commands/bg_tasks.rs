@@ -413,9 +413,13 @@ mod tests {
         let id = r["id"].as_str().unwrap().to_string();
         // Give the spawn a moment.
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        let _ = shell_task_kill_impl(&json!({ "id": id.clone() })).await.unwrap();
+        let _ = shell_task_kill_impl(&json!({ "id": id.clone() }))
+            .await
+            .unwrap();
         for _ in 0..50 {
-            let s = shell_task_status_impl(&json!({ "id": id.clone() })).await.unwrap();
+            let s = shell_task_status_impl(&json!({ "id": id.clone() }))
+                .await
+                .unwrap();
             if !s["running"].as_bool().unwrap_or(true) {
                 assert!(s["cancelled"].as_bool().unwrap_or(false));
                 return;
@@ -440,10 +444,7 @@ mod tests {
         let id2 = r2["id"].as_str().unwrap().to_string();
         let listing = shell_task_list_impl(&json!({})).await.unwrap();
         let tasks = listing["tasks"].as_array().unwrap();
-        let ids: Vec<&str> = tasks
-            .iter()
-            .map(|t| t["id"].as_str().unwrap())
-            .collect();
+        let ids: Vec<&str> = tasks.iter().map(|t| t["id"].as_str().unwrap()).collect();
         let pos1 = ids.iter().position(|s| *s == id1).unwrap();
         let pos2 = ids.iter().position(|s| *s == id2).unwrap();
         assert!(pos2 < pos1, "newer task should appear first");

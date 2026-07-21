@@ -47,9 +47,19 @@ fn agent_workspace(chat_id: Option<&str>, state: Option<&AppState>) -> PathBuf {
     let safe: String = id
         .chars()
         .take(64)
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
-    let slug = if safe.is_empty() { "default".to_string() } else { safe };
+    let slug = if safe.is_empty() {
+        "default".to_string()
+    } else {
+        safe
+    };
     root.join(slug)
 }
 
@@ -76,7 +86,9 @@ pub(crate) fn agent_workspace_for(chat_id: Option<&str>, state: &AppState) -> Pa
 /// the start is untouched.
 fn normalize_duplicate_drive_prefix(path: &str) -> String {
     let bytes = path.as_bytes();
-    if bytes.len() < 3 { return path.to_string(); }
+    if bytes.len() < 3 {
+        return path.to_string();
+    }
     let mut last_drive_idx: Option<usize> = None;
     let mut i = 1;
     while i + 1 < bytes.len() {
@@ -100,11 +112,19 @@ fn normalize_duplicate_drive_prefix(path: &str) -> String {
 /// (`..`, an out-of-workspace absolute path) is rejected — this is the security
 /// boundary that stops a prompt-injected model or a remote client from reading
 /// `~/.ssh/id_rsa` or writing into the Startup folder.
-fn resolve_agent_path(path: &str, chat_id: Option<&str>, state: Option<&AppState>) -> Result<PathBuf, String> {
+fn resolve_agent_path(
+    path: &str,
+    chat_id: Option<&str>,
+    state: Option<&AppState>,
+) -> Result<PathBuf, String> {
     let cleaned = normalize_duplicate_drive_prefix(path);
     let root = agent_workspace(chat_id, state);
     let p = std::path::Path::new(&cleaned);
-    let candidate = if p.is_absolute() { p.to_path_buf() } else { root.join(&cleaned) };
+    let candidate = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        root.join(&cleaned)
+    };
     crate::commands::filesystem::contain_within(&root, &candidate)
 }
 
@@ -214,7 +234,11 @@ mod path_tests {
 
         let resolved = agent_workspace(Some("__remote__"), Some(&state));
         let s = resolved.to_string_lossy().to_string();
-        assert!(s.contains("agent-workspace") && s.ends_with("__remote__"), "got: {}", s);
+        assert!(
+            s.contains("agent-workspace") && s.ends_with("__remote__"),
+            "got: {}",
+            s
+        );
         assert_ne!(resolved, target);
     }
 
@@ -234,9 +258,14 @@ mod path_tests {
             .unwrap()
             .insert("__remote__".to_string(), target.clone());
 
-        let resolved = resolve_agent_path("client/public", Some("__remote__"), Some(&state)).unwrap();
+        let resolved =
+            resolve_agent_path("client/public", Some("__remote__"), Some(&state)).unwrap();
         let actual = resolved.to_string_lossy().replace('\\', "/");
-        let expected = target.join("client").join("public").to_string_lossy().replace('\\', "/");
+        let expected = target
+            .join("client")
+            .join("public")
+            .to_string_lossy()
+            .replace('\\', "/");
         assert_eq!(actual, expected);
     }
 
@@ -255,15 +284,26 @@ mod path_tests {
 
         // Inside the override → allowed.
         let inside = target.join("foo.txt");
-        let resolved = resolve_agent_path(&inside.to_string_lossy(), Some("__remote__"), Some(&state));
-        assert!(resolved.is_ok(), "inside path should be allowed: {:?}", resolved);
+        let resolved =
+            resolve_agent_path(&inside.to_string_lossy(), Some("__remote__"), Some(&state));
+        assert!(
+            resolved.is_ok(),
+            "inside path should be allowed: {:?}",
+            resolved
+        );
 
         // Outside the override → rejected.
-        let abs = if cfg!(windows) { "C:/Windows/System32/foo.txt" } else { "/etc/passwd" };
+        let abs = if cfg!(windows) {
+            "C:/Windows/System32/foo.txt"
+        } else {
+            "/etc/passwd"
+        };
         assert!(resolve_agent_path(abs, Some("__remote__"), Some(&state)).is_err());
 
         // `..` climbing out of the workspace → rejected.
-        assert!(resolve_agent_path("../../../../etc/passwd", Some("__remote__"), Some(&state)).is_err());
+        assert!(
+            resolve_agent_path("../../../../etc/passwd", Some("__remote__"), Some(&state)).is_err()
+        );
     }
 }
 
@@ -278,19 +318,25 @@ pub fn execute_code(
     let timeout_ms = timeout.unwrap_or(30000);
 
     let tmp_dir = std::env::temp_dir();
-    let script_path = tmp_dir.join(format!("agent-code-{}.py", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0)));
+    let script_path = tmp_dir.join(format!(
+        "agent-code-{}.py",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ));
 
-    fs::write(&script_path, &code)
-        .map_err(|e| format!("Write temp script: {}", e))?;
+    fs::write(&script_path, &code).map_err(|e| format!("Write temp script: {}", e))?;
 
     // cwd: prefer the agent's folder workspace (the repo the user picked,
     // threaded from chatCtx as workingDirectory) so a script's relative file
     // I/O lands in that repo; otherwise the per-chat sandbox (#62). Same
     // resolution order as the file_* tools and shell_execute.
-    let workspace = match workingDirectory.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    let workspace = match workingDirectory
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         Some(wd) => PathBuf::from(wd),
         None => agent_workspace(chatId.as_deref(), Some(&*state)),
     };
@@ -312,8 +358,7 @@ pub fn execute_code(
         .stderr(Stdio::piped());
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
-    let mut child = cmd.spawn()
-        .map_err(|e| format!("Spawn Python: {}", e))?;
+    let mut child = cmd.spawn().map_err(|e| format!("Spawn Python: {}", e))?;
 
     // Poll-based timeout since std::process::Child has no wait_timeout
     let start = std::time::Instant::now();
@@ -371,8 +416,7 @@ pub fn file_read(
     if !full_path.exists() {
         return Err(format!("File not found: {}", full_path.display()));
     }
-    let content = fs::read_to_string(&full_path)
-        .map_err(|e| format!("Read error: {}", e))?;
+    let content = fs::read_to_string(&full_path).map_err(|e| format!("Read error: {}", e))?;
     Ok(serde_json::json!({"content": content}))
 }
 
@@ -409,8 +453,15 @@ pub fn set_chat_workspace_override(
     if id.is_empty() {
         return Err("chatId cannot be empty".into());
     }
-    let mut map = state.chat_workspace_overrides.lock().map_err(|e| e.to_string())?;
-    match path.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+    let mut map = state
+        .chat_workspace_overrides
+        .lock()
+        .map_err(|e| e.to_string())?;
+    match path
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
         Some(p) => {
             let pb = std::path::PathBuf::from(p);
             // Best-effort: create the folder if missing so the first
@@ -431,6 +482,11 @@ pub fn get_chat_workspace_override(
     chatId: String,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, String> {
-    let map = state.chat_workspace_overrides.lock().map_err(|e| e.to_string())?;
-    Ok(map.get(chatId.trim()).map(|p| p.to_string_lossy().to_string()))
+    let map = state
+        .chat_workspace_overrides
+        .lock()
+        .map_err(|e| e.to_string())?;
+    Ok(map
+        .get(chatId.trim())
+        .map(|p| p.to_string_lossy().to_string()))
 }

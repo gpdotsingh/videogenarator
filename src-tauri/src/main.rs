@@ -7,10 +7,10 @@ mod state;
 
 use state::AppState;
 use tauri::{
-    Emitter, Manager,
+    image::Image,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    image::Image,
+    Emitter, Manager,
 };
 
 /// Bug D (v2.4.5 — emilmjt Discord 2026-05-11): on Arch Linux + Wayland
@@ -55,7 +55,12 @@ fn init_tracing() {
     if json_mode {
         let _ = tracing_subscriber::registry()
             .with(filter)
-            .with(fmt::layer().json().with_current_span(false).with_span_list(false))
+            .with(
+                fmt::layer()
+                    .json()
+                    .with_current_span(false)
+                    .with_span_list(false),
+            )
             .try_init();
     } else {
         let _ = tracing_subscriber::registry()
@@ -70,10 +75,7 @@ fn main() {
     apply_linux_webkit_workarounds();
 
     init_tracing();
-    tracing::info!(
-        version = env!("CARGO_PKG_VERSION"),
-        "LU starting"
-    );
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "LU starting");
 
     let app_state = AppState::new();
 
@@ -242,6 +244,7 @@ fn main() {
             commands::proxy::proxy_localhost_stream_chunked,
             commands::proxy::cancel_proxy_stream,
             commands::proxy::comfy_upload_image,
+            commands::generated_video::archive_generated_video,
             commands::proxy::register_openai_host,
             commands::proxy::pull_model_stream,
             commands::proxy::cancel_model_pull,
@@ -422,8 +425,16 @@ mod tests {
         cleanup();
         std::env::set_var(DMABUF, "0");
         super::apply_linux_webkit_workarounds();
-        assert_eq!(std::env::var(DMABUF).ok().as_deref(), Some("0"), "user-set DMABUF should be preserved");
-        assert_eq!(std::env::var(COMPOSITING).ok().as_deref(), Some("1"), "unset COMPOSITING should still be applied");
+        assert_eq!(
+            std::env::var(DMABUF).ok().as_deref(),
+            Some("0"),
+            "user-set DMABUF should be preserved"
+        );
+        assert_eq!(
+            std::env::var(COMPOSITING).ok().as_deref(),
+            Some("1"),
+            "unset COMPOSITING should still be applied"
+        );
         cleanup();
     }
 
@@ -433,8 +444,16 @@ mod tests {
         cleanup();
         std::env::set_var(COMPOSITING, "custom-value");
         super::apply_linux_webkit_workarounds();
-        assert_eq!(std::env::var(DMABUF).ok().as_deref(), Some("1"), "unset DMABUF should still be applied");
-        assert_eq!(std::env::var(COMPOSITING).ok().as_deref(), Some("custom-value"), "user-set COMPOSITING should be preserved");
+        assert_eq!(
+            std::env::var(DMABUF).ok().as_deref(),
+            Some("1"),
+            "unset DMABUF should still be applied"
+        );
+        assert_eq!(
+            std::env::var(COMPOSITING).ok().as_deref(),
+            Some("custom-value"),
+            "user-set COMPOSITING should be preserved"
+        );
         cleanup();
     }
 
@@ -459,15 +478,9 @@ mod tests {
         let _g = ENV_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
         cleanup();
         super::apply_linux_webkit_workarounds();
-        let after_first = (
-            std::env::var(DMABUF).ok(),
-            std::env::var(COMPOSITING).ok(),
-        );
+        let after_first = (std::env::var(DMABUF).ok(), std::env::var(COMPOSITING).ok());
         super::apply_linux_webkit_workarounds();
-        let after_second = (
-            std::env::var(DMABUF).ok(),
-            std::env::var(COMPOSITING).ok(),
-        );
+        let after_second = (std::env::var(DMABUF).ok(), std::env::var(COMPOSITING).ok());
         assert_eq!(after_first, after_second, "second call should be a no-op");
         cleanup();
     }

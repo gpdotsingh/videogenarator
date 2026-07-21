@@ -29,13 +29,17 @@ fn assign_to_kill_on_close_job(child: &std::process::Child) {
 /// Same KILL_ON_JOB_CLOSE semantics; a pid of 0 is ignored.
 #[cfg(target_os = "windows")]
 pub(crate) fn assign_pid_to_kill_on_close_job(pid: u32) {
-    use windows_sys::Win32::System::JobObjects::*;
     use windows_sys::Win32::Foundation::*;
+    use windows_sys::Win32::System::JobObjects::*;
 
-    if pid == 0 { return; }
+    if pid == 0 {
+        return;
+    }
     unsafe {
         let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
-        if job.is_null() { return; }
+        if job.is_null() {
+            return;
+        }
 
         let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
         info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
@@ -49,7 +53,7 @@ pub(crate) fn assign_pid_to_kill_on_close_job(pid: u32) {
 
         let handle = windows_sys::Win32::System::Threading::OpenProcess(
             windows_sys::Win32::System::Threading::PROCESS_SET_QUOTA
-            | windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
+                | windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
             0, // FALSE
             pid,
         );
@@ -101,9 +105,7 @@ fn nvidia_present() -> bool {
     let mut cmd = Command::new("nvidia-smi");
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
-    cmd.output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    cmd.output().map(|o| o.status.success()).unwrap_or(false)
 }
 
 /// User override for the ComfyUI CPU/GPU decision (settings.comfyGpuMode).
@@ -162,8 +164,17 @@ pub fn decide_comfy_cpu_flag(
 
 /// Skip these directories during ComfyUI search
 const SKIP_DIRS: &[&str] = &[
-    "node_modules", ".git", "__pycache__", "venv", ".venv", "site-packages",
-    "Windows", "Program Files", "Program Files (x86)", "$Recycle.Bin", "AppData",
+    "node_modules",
+    ".git",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "site-packages",
+    "Windows",
+    "Program Files",
+    "Program Files (x86)",
+    "$Recycle.Bin",
+    "AppData",
 ];
 
 fn scan_for_comfyui(dir: &Path, depth: u32) -> Option<PathBuf> {
@@ -227,10 +238,19 @@ fn is_comfyui_install_complete(comfy_path: &Path) -> bool {
 
     // Path 1: portable layouts (next-to or inside the ComfyUI dir).
     let portable_candidates = [
-        comfy_path
-            .parent()
-            .map(|p| p.join("python_embeded").join("Lib").join("site-packages").join("torch")),
-        Some(comfy_path.join("python_embeded").join("Lib").join("site-packages").join("torch")),
+        comfy_path.parent().map(|p| {
+            p.join("python_embeded")
+                .join("Lib")
+                .join("site-packages")
+                .join("torch")
+        }),
+        Some(
+            comfy_path
+                .join("python_embeded")
+                .join("Lib")
+                .join("site-packages")
+                .join("torch"),
+        ),
     ];
     for c in portable_candidates.into_iter().flatten() {
         if c.exists() {
@@ -357,7 +377,13 @@ fn desktop_app_working_dir_candidates() -> Vec<PathBuf> {
             out.push(PathBuf::from(&localappdata).join("ComfyUI"));
             // The desktop installer also bundles a ComfyUI tree under the
             // app's resources for first-launch seeding.
-            out.push(PathBuf::from(&localappdata).join("Programs").join("ComfyUI").join("resources").join("ComfyUI"));
+            out.push(
+                PathBuf::from(&localappdata)
+                    .join("Programs")
+                    .join("ComfyUI")
+                    .join("resources")
+                    .join("ComfyUI"),
+            );
         }
     }
     out
@@ -428,12 +454,22 @@ pub fn find_comfyui_path() -> Option<String> {
     if cfg!(target_os = "windows") {
         // Stability Matrix stores ComfyUI in AppData
         if let Ok(appdata) = std::env::var("APPDATA") {
-            fixed.push(PathBuf::from(&appdata).join("StabilityMatrix").join("Packages").join("ComfyUI"));
+            fixed.push(
+                PathBuf::from(&appdata)
+                    .join("StabilityMatrix")
+                    .join("Packages")
+                    .join("ComfyUI"),
+            );
             // Comfy-Org/desktop app working dir (GH #47, levoy1 2026-05-24)
             fixed.push(PathBuf::from(&appdata).join("ComfyUI"));
         }
         if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
-            fixed.push(PathBuf::from(&localappdata).join("StabilityMatrix").join("Packages").join("ComfyUI"));
+            fixed.push(
+                PathBuf::from(&localappdata)
+                    .join("StabilityMatrix")
+                    .join("Packages")
+                    .join("ComfyUI"),
+            );
             fixed.push(PathBuf::from(&localappdata).join("ComfyUI"));
         }
         // Common Program Files locations
@@ -548,7 +584,11 @@ fn detect_all_comfyui_installs_sync() -> Vec<ComfyUIInstall> {
     let mut out: Vec<ComfyUIInstall> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    let push_if_new = |path: PathBuf, source: &str, out: &mut Vec<ComfyUIInstall>, seen: &mut std::collections::HashSet<String>| -> bool {
+    let push_if_new = |path: PathBuf,
+                       source: &str,
+                       out: &mut Vec<ComfyUIInstall>,
+                       seen: &mut std::collections::HashSet<String>|
+     -> bool {
         if !path.join("main.py").exists() {
             return false;
         }
@@ -566,7 +606,12 @@ fn detect_all_comfyui_installs_sync() -> Vec<ComfyUIInstall> {
 
     // 1. COMFYUI_PATH env var
     if let Ok(env_path) = std::env::var("COMFYUI_PATH") {
-        push_if_new(PathBuf::from(&env_path), "COMFYUI_PATH env var", &mut out, &mut seen);
+        push_if_new(
+            PathBuf::from(&env_path),
+            "COMFYUI_PATH env var",
+            &mut out,
+            &mut seen,
+        );
     }
 
     // 2. app config.json
@@ -593,13 +638,28 @@ fn detect_all_comfyui_installs_sync() -> Vec<ComfyUIInstall> {
     ];
     if cfg!(target_os = "windows") {
         if let Ok(appdata) = std::env::var("APPDATA") {
-            fixed.push((PathBuf::from(&appdata).join("StabilityMatrix").join("Packages").join("ComfyUI"), "StabilityMatrix"));
+            fixed.push((
+                PathBuf::from(&appdata)
+                    .join("StabilityMatrix")
+                    .join("Packages")
+                    .join("ComfyUI"),
+                "StabilityMatrix",
+            ));
             // Comfy-Org/desktop default Working Directory hint (GH #47).
             fixed.push((PathBuf::from(&appdata).join("ComfyUI"), "Desktop App data"));
         }
         if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
-            fixed.push((PathBuf::from(&localappdata).join("StabilityMatrix").join("Packages").join("ComfyUI"), "StabilityMatrix"));
-            fixed.push((PathBuf::from(&localappdata).join("ComfyUI"), "Desktop App data"));
+            fixed.push((
+                PathBuf::from(&localappdata)
+                    .join("StabilityMatrix")
+                    .join("Packages")
+                    .join("ComfyUI"),
+                "StabilityMatrix",
+            ));
+            fixed.push((
+                PathBuf::from(&localappdata).join("ComfyUI"),
+                "Desktop App data",
+            ));
         }
         fixed.push((PathBuf::from("C:\\Program Files\\ComfyUI"), "Program Files"));
         fixed.push((PathBuf::from("C:\\AI\\ComfyUI"), "C:\\AI"));
@@ -677,12 +737,13 @@ fn walk_for_comfyui<F: FnMut(PathBuf)>(dir: &Path, depth: i32, cb: &mut F) {
         // and .git are common in dev projects; the rest are system locations
         // that should never own a ComfyUI install anyway.
         if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
-            if matches!(name,
+            if matches!(
+                name,
                 "node_modules" | ".git" | "AppData" | "$Recycle.Bin"
                 | "Windows" | "System32" | "ProgramData" | ".cache"
                 | "target" | ".cargo" | ".rustup" | ".npm" | ".pnpm"
                 | "Library"     // macOS, harmless on Windows
-                | "OneDrive"    // huge synced trees; ComfyUI shouldn't live there
+                | "OneDrive" // huge synced trees; ComfyUI shouldn't live there
             ) {
                 continue;
             }
@@ -721,7 +782,8 @@ fn kill_port_owner(port: u16) {
             // Match on the LOCAL address column only; the state column is
             // locale-dependent ("LISTENING" / "ABHÖREN"), so don't parse it.
             let cols: Vec<&str> = line.split_whitespace().collect();
-            if cols.len() >= 5 && cols[0].eq_ignore_ascii_case("tcp") && cols[1].ends_with(&needle) {
+            if cols.len() >= 5 && cols[0].eq_ignore_ascii_case("tcp") && cols[1].ends_with(&needle)
+            {
                 if let Ok(pid) = cols[cols.len() - 1].parse::<u32>() {
                     if pid != 0 && pid != own_pid && !pids.contains(&pid) {
                         pids.push(pid);
@@ -730,7 +792,10 @@ fn kill_port_owner(port: u16) {
             }
         }
         for pid in pids {
-            println!("[ComfyUI] CORS fix: killing port {} owner pid {}", port, pid);
+            println!(
+                "[ComfyUI] CORS fix: killing port {} owner pid {}",
+                port, pid
+            );
             let mut kill = Command::new("taskkill");
             kill.args(["/pid", &pid.to_string(), "/T", "/F"]);
             kill.creation_flags(CREATE_NO_WINDOW);
@@ -739,7 +804,10 @@ fn kill_port_owner(port: u16) {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        if let Ok(out) = Command::new("lsof").args(["-ti", &format!("tcp:{}", port), "-sTCP:LISTEN"]).output() {
+        if let Ok(out) = Command::new("lsof")
+            .args(["-ti", &format!("tcp:{}", port), "-sTCP:LISTEN"])
+            .output()
+        {
             for line in String::from_utf8_lossy(&out.stdout).lines() {
                 if let Ok(pid) = line.trim().parse::<u32>() {
                     if pid != 0 && pid != own_pid {
@@ -962,7 +1030,9 @@ fn comfy_gpu_available_cached(
             Some(v)
         }
         None => {
-            println!("[ComfyUI] GPU probe timed out — treating as no accel for this start (will retry)");
+            println!(
+                "[ComfyUI] GPU probe timed out — treating as no accel for this start (will retry)"
+            );
             None
         }
     }
@@ -1075,17 +1145,25 @@ pub fn start_comfyui(state: State<'_, AppState>) -> Result<serde_json::Value, St
     //   <ComfyUI>/python_embeded/python.exe   ← what we want
     //   <ComfyUI>/main.py
     // Fixed Discord report from reload__: AMD Portable launchte nicht.
-    let portable_python = std::path::Path::new(&comfy_path)
-        .parent()
-        .and_then(|p| {
-            let candidate = p.join("python_embeded").join("python.exe");
-            if candidate.exists() { Some(candidate.to_string_lossy().to_string()) } else { None }
-        });
+    let portable_python = std::path::Path::new(&comfy_path).parent().and_then(|p| {
+        let candidate = p.join("python_embeded").join("python.exe");
+        if candidate.exists() {
+            Some(candidate.to_string_lossy().to_string())
+        } else {
+            None
+        }
+    });
     let bundled_python = portable_python.or_else(|| {
         // Some portable variants nest python_embeded inside the ComfyUI dir
         // itself rather than alongside it.
-        let candidate = std::path::Path::new(&comfy_path).join("python_embeded").join("python.exe");
-        if candidate.exists() { Some(candidate.to_string_lossy().to_string()) } else { None }
+        let candidate = std::path::Path::new(&comfy_path)
+            .join("python_embeded")
+            .join("python.exe");
+        if candidate.exists() {
+            Some(candidate.to_string_lossy().to_string())
+        } else {
+            None
+        }
     });
     // Bug E (rzgrozt — Arch PEP 668): when the installer detected an
     // externally-managed Python it created a venv at <ComfyUI>/venv and
@@ -1111,7 +1189,10 @@ pub fn start_comfyui(state: State<'_, AppState>) -> Result<serde_json::Value, St
     if bundled_python.is_some() {
         println!("[ComfyUI] Using bundled portable Python: {}", python);
     } else if venv_python.is_some() {
-        println!("[ComfyUI] Using ComfyUI venv Python (PEP 668 install): {}", python);
+        println!(
+            "[ComfyUI] Using ComfyUI venv Python (PEP 668 install): {}",
+            python
+        );
     } else {
         println!("[ComfyUI] Using system Python: {}", python);
     }
@@ -1135,9 +1216,12 @@ pub fn start_comfyui(state: State<'_, AppState>) -> Result<serde_json::Value, St
     *state.comfy_started_cpu.lock().unwrap() = Some(needs_cpu_fallback);
     let mut comfy_args: Vec<&str> = vec![
         "main.py",
-        "--listen", "127.0.0.1",
-        "--port", &port_str,
-        "--enable-cors-header", "*",
+        "--listen",
+        "127.0.0.1",
+        "--port",
+        &port_str,
+        "--enable-cors-header",
+        "*",
     ];
     if needs_cpu_fallback {
         comfy_args.push("--cpu");
@@ -1152,7 +1236,10 @@ pub fn start_comfyui(state: State<'_, AppState>) -> Result<serde_json::Value, St
     // skips it — flash-attn is CUDA-only.
     if !needs_cpu_fallback && flash_attention_cached(&state, &python) {
         comfy_args.push("--use-flash-attention");
-        println!("[ComfyUI] flash-attn detected in {} — enabling Flash Attention", python);
+        println!(
+            "[ComfyUI] flash-attn detected in {} — enabling Flash Attention",
+            python
+        );
     }
     let mut cmd = Command::new(&python);
     cmd.args(&comfy_args)
@@ -1182,11 +1269,10 @@ pub fn start_comfyui(state: State<'_, AppState>) -> Result<serde_json::Value, St
     }
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
-    let mut child = cmd.spawn()
-        .map_err(|e| {
-            error!(error = %e, python = %python, "comfyui start failed");
-            format!("Failed to start ComfyUI (python={}): {}", python, e)
-        })?;
+    let mut child = cmd.spawn().map_err(|e| {
+        error!(error = %e, python = %python, "comfyui start failed");
+        format!("Failed to start ComfyUI (python={}): {}", python, e)
+    })?;
 
     // Assign to Job Object so child dies when parent dies (even via Task Manager)
     #[cfg(target_os = "windows")]
@@ -1268,8 +1354,12 @@ pub async fn comfyui_status(state: State<'_, AppState>) -> Result<serde_json::Va
         .build()
         .ok()
         .and_then(|c| Some(c.get(format!("http://{}:{}/system_stats", host, port))))
-        .map(|req| async move { req.send().await.map(|r| r.status().is_success()).unwrap_or(false) })
-    ;
+        .map(|req| async move {
+            req.send()
+                .await
+                .map(|r| r.status().is_success())
+                .unwrap_or(false)
+        });
     let running = match running {
         Some(fut) => fut.await,
         None => false,
@@ -1294,8 +1384,8 @@ pub async fn comfyui_status(state: State<'_, AppState>) -> Result<serde_json::Va
                     *proc = None;
                     false
                 }
-                Ok(None) => true,  // still running; just hasn't bound the port yet
-                Err(_) => true,    // can't determine — assume alive, don't thrash
+                Ok(None) => true, // still running; just hasn't bound the port yet
+                Err(_) => true,   // can't determine — assume alive, don't thrash
             },
             None => false,
         }
@@ -1316,7 +1406,7 @@ pub async fn comfyui_status(state: State<'_, AppState>) -> Result<serde_json::Va
     let found = if is_local {
         resolved_path.is_some()
     } else {
-        true  // the remote side handles its own install
+        true // the remote side handles its own install
     };
 
     // Carcass detection: a local install is only "complete" if torch is
@@ -1348,7 +1438,10 @@ pub async fn comfyui_status(state: State<'_, AppState>) -> Result<serde_json::Va
 /// Anything else = remote and LU won't try to manage the process.
 pub fn is_local_host(host: &str) -> bool {
     let h = host.trim().to_ascii_lowercase();
-    matches!(h.as_str(), "localhost" | "127.0.0.1" | "::1" | "0.0.0.0" | "")
+    matches!(
+        h.as_str(),
+        "localhost" | "127.0.0.1" | "::1" | "0.0.0.0" | ""
+    )
 }
 
 #[tauri::command]
@@ -1378,7 +1471,10 @@ pub fn find_comfyui() -> Result<serde_json::Value, String> {
 /// (settings.comfyGpuMode). "auto" | "cpu" | "gpu". Desktop-relevant only — the
 /// web build points at a remote ComfyUI and never starts a local one.
 #[tauri::command]
-pub fn set_comfy_gpu_mode(mode: String, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub fn set_comfy_gpu_mode(
+    mode: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     let normalized = match mode.trim().to_ascii_lowercase().as_str() {
         "cpu" => "cpu",
         "gpu" => "gpu",
@@ -1405,7 +1501,10 @@ pub fn get_comfy_gpu_status(state: State<'_, AppState>) -> Result<serde_json::Va
 }
 
 #[tauri::command]
-pub fn set_comfyui_path(path: String, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub fn set_comfyui_path(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     // Resolve the path the user gave us to a directory that actually contains
     // `main.py`. Direct hit short-circuits; otherwise we look at the ComfyUI
     // Desktop App layout (Comfy-Org/desktop, GH #47, levoy1 2026-05-24): the
@@ -1458,7 +1557,10 @@ pub fn set_comfyui_path(path: String, state: State<'_, AppState>) -> Result<serd
 }
 
 #[tauri::command]
-pub fn set_comfyui_host(host: String, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub fn set_comfyui_host(
+    host: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     let trimmed = host.trim();
     if trimmed.is_empty() {
         return Err("Host must not be empty".to_string());
@@ -1499,7 +1601,10 @@ pub fn set_comfyui_host(host: String, state: State<'_, AppState>) -> Result<serd
 }
 
 #[tauri::command]
-pub fn set_comfyui_port(port: u16, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub fn set_comfyui_port(
+    port: u16,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     if port == 0 {
         return Err("Port must be greater than 0".to_string());
     }
@@ -1557,7 +1662,10 @@ fn normalize_ollama_base(input: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn set_ollama_host(host: String, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub fn set_ollama_host(
+    host: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     let final_base = normalize_ollama_base(&host)?;
 
     {
@@ -1591,7 +1699,10 @@ pub fn set_ollama_host(host: String, state: State<'_, AppState>) -> Result<serde
         .map(|h| matches!(h.as_str(), "localhost" | "127.0.0.1" | "::1" | "0.0.0.0"))
         .unwrap_or(false);
 
-    println!("[Ollama] Base URL set to {} (local={})", final_base, is_local);
+    println!(
+        "[Ollama] Base URL set to {} (local={})",
+        final_base, is_local
+    );
     Ok(serde_json::json!({"status": "saved", "base": final_base, "isLocal": is_local}))
 }
 
@@ -1647,7 +1758,10 @@ pub fn auto_start_comfyui(state: &AppState) {
     {
         let host = state.comfy_host.lock().unwrap().clone();
         if !is_local_host(&host) {
-            println!("[ComfyUI] Remote host configured ({}), skipping local auto-start", host);
+            println!(
+                "[ComfyUI] Remote host configured ({}), skipping local auto-start",
+                host
+            );
             return;
         }
     }
@@ -1680,43 +1794,66 @@ pub fn auto_start_comfyui(state: &AppState) {
                 .parent()
                 .and_then(|p| {
                     let c = p.join("python_embeded").join("python.exe");
-                    if c.exists() { Some(c.to_string_lossy().to_string()) } else { None }
+                    if c.exists() {
+                        Some(c.to_string_lossy().to_string())
+                    } else {
+                        None
+                    }
                 })
                 .or_else(|| {
-                    let c = std::path::Path::new(&path).join("python_embeded").join("python.exe");
-                    if c.exists() { Some(c.to_string_lossy().to_string()) } else { None }
+                    let c = std::path::Path::new(&path)
+                        .join("python_embeded")
+                        .join("python.exe");
+                    if c.exists() {
+                        Some(c.to_string_lossy().to_string())
+                    } else {
+                        None
+                    }
                 });
             // Bug E: prefer the per-install venv that the PEP 668 path
             // creates (Arch / Debian 12+ / Fedora 38+ / Ubuntu 23.04+).
             // Without this auto-start would launch with the system Python
             // that doesn't have torch and crash on first import.
-            let venv_python = crate::python::resolve_comfyui_venv_python(std::path::Path::new(&path));
+            let venv_python =
+                crate::python::resolve_comfyui_venv_python(std::path::Path::new(&path));
             let system_python = state.python_bin.lock().unwrap().clone();
             let python = portable_python
                 .clone()
                 .or_else(|| venv_python.clone())
                 .unwrap_or_else(|| system_python.clone());
             if python.is_empty() {
-                println!("[ComfyUI] Auto-start skipped: no Python available (install via P14 flow)");
+                println!(
+                    "[ComfyUI] Auto-start skipped: no Python available (install via P14 flow)"
+                );
                 return;
             }
             if portable_python.is_some() {
-                println!("[ComfyUI] Auto-start using bundled portable Python: {}", python);
+                println!(
+                    "[ComfyUI] Auto-start using bundled portable Python: {}",
+                    python
+                );
             } else if venv_python.is_some() {
-                println!("[ComfyUI] Auto-start using ComfyUI venv Python (PEP 668 install): {}", python);
+                println!(
+                    "[ComfyUI] Auto-start using ComfyUI venv Python (PEP 668 install): {}",
+                    python
+                );
             }
 
             // Bug J: same --cpu fallback as start_comfyui to avoid the
             // "Found no NVIDIA driver" crash loop on non-NVIDIA systems.
             let auto_gpu_mode = ComfyGpuMode::parse(&state.comfy_gpu_mode.lock().unwrap());
-            let auto_needs_cpu = comfy_needs_cpu(&python, auto_gpu_mode, Some(&state.comfy_gpu_cache));
+            let auto_needs_cpu =
+                comfy_needs_cpu(&python, auto_gpu_mode, Some(&state.comfy_gpu_cache));
             // Mirror of start_comfyui: expose the real launch mode to the UI.
             *state.comfy_started_cpu.lock().unwrap() = Some(auto_needs_cpu);
             let mut comfy_args: Vec<&str> = vec![
                 "main.py",
-                "--listen", "127.0.0.1",
-                "--port", &port_str,
-                "--enable-cors-header", "*",
+                "--listen",
+                "127.0.0.1",
+                "--port",
+                &port_str,
+                "--enable-cors-header",
+                "*",
             ];
             if auto_needs_cpu {
                 comfy_args.push("--cpu");
@@ -1855,8 +1992,16 @@ mod tests {
         // baseline_needs_cpu == false means NVIDIA present (or macOS MPS): the GPU
         // is already fine, so the torch probe is irrelevant and it's never --cpu.
         assert!(!decide_comfy_cpu_flag(ComfyGpuMode::Auto, false, None));
-        assert!(!decide_comfy_cpu_flag(ComfyGpuMode::Auto, false, Some(false)));
-        assert!(!decide_comfy_cpu_flag(ComfyGpuMode::Auto, false, Some(true)));
+        assert!(!decide_comfy_cpu_flag(
+            ComfyGpuMode::Auto,
+            false,
+            Some(false)
+        ));
+        assert!(!decide_comfy_cpu_flag(
+            ComfyGpuMode::Auto,
+            false,
+            Some(true)
+        ));
     }
 
     #[test]
@@ -1931,7 +2076,10 @@ pub fn offload_local_models(
         freed.push("comfyui");
     }
 
-    println!("[Offload] released local model backends (comfyui={}): {:?}", free_comfy, freed);
+    println!(
+        "[Offload] released local model backends (comfyui={}): {:?}",
+        free_comfy, freed
+    );
     Ok(serde_json::json!({ "offloaded": freed }))
 }
 

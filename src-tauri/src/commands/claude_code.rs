@@ -43,7 +43,11 @@ pub fn detect_claude_code() -> Result<serde_json::Value, String> {
 }
 
 fn find_claude_path() -> Option<String> {
-    let cmd_name = if cfg!(target_os = "windows") { "where" } else { "which" };
+    let cmd_name = if cfg!(target_os = "windows") {
+        "where"
+    } else {
+        "which"
+    };
     let mut cmd = Command::new(cmd_name);
     cmd.arg("claude")
         .stdout(Stdio::piped())
@@ -56,10 +60,22 @@ fn find_claude_path() -> Option<String> {
             let output = String::from_utf8_lossy(&o.stdout);
             // On Windows, `where` returns multiple lines. Prefer .cmd or .exe over bare scripts.
             if cfg!(target_os = "windows") {
-                let lines: Vec<&str> = output.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+                let lines: Vec<&str> = output
+                    .lines()
+                    .map(|l| l.trim())
+                    .filter(|l| !l.is_empty())
+                    .collect();
                 // First try .exe, then .cmd, then first result
-                lines.iter().find(|l| l.ends_with(".exe")).map(|s| s.to_string())
-                    .or_else(|| lines.iter().find(|l| l.ends_with(".cmd")).map(|s| s.to_string()))
+                lines
+                    .iter()
+                    .find(|l| l.ends_with(".exe"))
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        lines
+                            .iter()
+                            .find(|l| l.ends_with(".cmd"))
+                            .map(|s| s.to_string())
+                    })
                     .or_else(|| lines.first().map(|s| s.to_string()))
             } else {
                 Some(output.lines().next()?.trim().to_string())
@@ -84,7 +100,9 @@ pub fn install_claude_code(
 
     install.status = "installing".to_string();
     install.logs.clear();
-    install.logs.push("Starting Claude Code installation...".to_string());
+    install
+        .logs
+        .push("Starting Claude Code installation...".to_string());
     drop(install);
 
     let install_state = state.claude_code_install.clone();
@@ -102,7 +120,8 @@ pub fn install_claude_code(
                 // Check Node.js
                 update("installing", "Checking Node.js...");
                 let mut node_cmd = Command::new("node");
-                node_cmd.args(["--version"])
+                node_cmd
+                    .args(["--version"])
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
                 #[cfg(target_os = "windows")]
@@ -120,7 +139,10 @@ pub fn install_claude_code(
                 }
 
                 // npm install -g @anthropic-ai/claude-code
-                update("installing", "Installing @anthropic-ai/claude-code via npm...");
+                update(
+                    "installing",
+                    "Installing @anthropic-ai/claude-code via npm...",
+                );
                 let mut npm = Command::new("npm");
                 npm.args(["install", "-g", "@anthropic-ai/claude-code"])
                     .stdout(Stdio::piped())
@@ -134,7 +156,13 @@ pub fn install_claude_code(
                     }
                     Ok(output) => {
                         let stderr = String::from_utf8_lossy(&output.stderr);
-                        update("error", &format!("npm install failed: {}", stderr.chars().take(300).collect::<String>()));
+                        update(
+                            "error",
+                            &format!(
+                                "npm install failed: {}",
+                                stderr.chars().take(300).collect::<String>()
+                            ),
+                        );
                     }
                     Err(e) => {
                         update("error", &format!("npm not found: {}", e));
@@ -147,10 +175,15 @@ pub fn install_claude_code(
                     update("installing", "Running native installer for Windows...");
                     // PowerShell one-liner from Anthropic
                     let mut ps = Command::new("powershell");
-                    ps.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-                        "irm https://claude.ai/install.ps1 | iex"])
-                        .stdout(Stdio::piped())
-                        .stderr(Stdio::piped());
+                    ps.args([
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-Command",
+                        "irm https://claude.ai/install.ps1 | iex",
+                    ])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
                     #[cfg(target_os = "windows")]
                     ps.creation_flags(CREATE_NO_WINDOW);
 
@@ -163,7 +196,13 @@ pub fn install_claude_code(
                             let stdout = String::from_utf8_lossy(&output.stdout);
                             // Native installer may print to stdout
                             let msg = if stderr.is_empty() { stdout } else { stderr };
-                            update("error", &format!("Installation failed: {}", msg.chars().take(300).collect::<String>()));
+                            update(
+                                "error",
+                                &format!(
+                                    "Installation failed: {}",
+                                    msg.chars().take(300).collect::<String>()
+                                ),
+                            );
                         }
                         Err(e) => {
                             update("error", &format!("PowerShell not found: {}", e));
@@ -183,7 +222,13 @@ pub fn install_claude_code(
                         }
                         Ok(output) => {
                             let stderr = String::from_utf8_lossy(&output.stderr);
-                            update("error", &format!("Installation failed: {}", stderr.chars().take(300).collect::<String>()));
+                            update(
+                                "error",
+                                &format!(
+                                    "Installation failed: {}",
+                                    stderr.chars().take(300).collect::<String>()
+                                ),
+                            );
                         }
                         Err(e) => {
                             update("error", &format!("Shell not available: {}", e));
@@ -284,13 +329,18 @@ pub fn start_claude_code(
         .env("ANTHROPIC_BASE_URL", &ollamaBaseUrl)
         .env("ANTHROPIC_API_KEY", "sk-local-placeholder")
         .env("DISABLE_PROMPT_CACHING", "1")
-        .env_remove("CLAUDECODE")  // Prevent "nested session" detection
+        .env_remove("CLAUDECODE") // Prevent "nested session" detection
         .env_remove("CLAUDE_CODE_ENTRYPOINT");
 
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
 
-    let mut child = cmd.spawn().map_err(|e| format!("Failed to start Claude Code (bin: {}, dir: {}): {}", claude_bin, effective_dir, e))?;
+    let mut child = cmd.spawn().map_err(|e| {
+        format!(
+            "Failed to start Claude Code (bin: {}, dir: {}): {}",
+            claude_bin, effective_dir, e
+        )
+    })?;
 
     let pid = child.id();
     println!("[ClaudeCode] Started with PID {}", pid);
@@ -335,8 +385,10 @@ pub fn start_claude_code(
             }
         }
         // Process ended
-        let _ = app_stdout.emit("claude-code-event",
-            serde_json::json!({"type": "done", "content": "Claude Code session ended."}));
+        let _ = app_stdout.emit(
+            "claude-code-event",
+            serde_json::json!({"type": "done", "content": "Claude Code session ended."}),
+        );
         println!("[ClaudeCode] stdout reader finished");
     });
 
@@ -349,8 +401,10 @@ pub fn start_claude_code(
                 let trimmed = text.trim();
                 if !trimmed.is_empty() {
                     println!("[ClaudeCode stderr] {}", trimmed);
-                    let _ = app_stderr.emit("claude-code-event",
-                        serde_json::json!({"type": "error", "content": trimmed}));
+                    let _ = app_stderr.emit(
+                        "claude-code-event",
+                        serde_json::json!({"type": "error", "content": trimmed}),
+                    );
                 }
             }
         }
@@ -400,11 +454,14 @@ pub fn send_claude_code_input(
     let mut proc = state.claude_code_process.lock().unwrap();
     if let Some(ref mut child) = *proc {
         if let Some(ref mut stdin) = child.stdin {
-            stdin.write_all(input.as_bytes())
+            stdin
+                .write_all(input.as_bytes())
                 .map_err(|e| format!("Failed to write to stdin: {}", e))?;
-            stdin.write_all(b"\n")
+            stdin
+                .write_all(b"\n")
                 .map_err(|e| format!("Failed to write newline: {}", e))?;
-            stdin.flush()
+            stdin
+                .flush()
                 .map_err(|e| format!("Failed to flush stdin: {}", e))?;
             Ok(serde_json::json!({"status": "sent"}))
         } else {

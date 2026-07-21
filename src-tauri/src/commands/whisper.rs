@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader, Write};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{mpsc, Arc, Mutex};
-use std::path::PathBuf;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -39,7 +39,10 @@ impl WhisperServer {
             return Ok(());
         }
 
-        println!("[Whisper] Starting persistent server: {} {}", python_bin, script_path);
+        println!(
+            "[Whisper] Starting persistent server: {} {}",
+            python_bin, script_path
+        );
 
         let mut cmd = Command::new(python_bin);
         cmd.arg(script_path)
@@ -48,7 +51,8 @@ impl WhisperServer {
             .stderr(Stdio::piped());
         #[cfg(target_os = "windows")]
         cmd.creation_flags(CREATE_NO_WINDOW);
-        let mut child = cmd.spawn()
+        let mut child = cmd
+            .spawn()
             .map_err(|e| format!("Failed to start whisper server: {}", e))?;
 
         let stdin = child.stdin.take().ok_or("Failed to get stdin")?;
@@ -98,10 +102,19 @@ impl WhisperServer {
                 Ok(msg) => {
                     if msg.get("status").and_then(|s| s.as_str()) == Some("ready") {
                         self.ready = true;
-                        self.backend = msg.get("backend").and_then(|b| b.as_str()).map(|s| s.to_string());
-                        println!("[Whisper] Server ready (backend: {})", self.backend.as_deref().unwrap_or("unknown"));
+                        self.backend = msg
+                            .get("backend")
+                            .and_then(|b| b.as_str())
+                            .map(|s| s.to_string());
+                        println!(
+                            "[Whisper] Server ready (backend: {})",
+                            self.backend.as_deref().unwrap_or("unknown")
+                        );
                     } else if msg.get("status").and_then(|s| s.as_str()) == Some("error") {
-                        let err = msg.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
+                        let err = msg
+                            .get("error")
+                            .and_then(|e| e.as_str())
+                            .unwrap_or("unknown");
                         return Err(format!("Whisper server error: {}", err));
                     }
                 }
@@ -122,8 +135,12 @@ impl WhisperServer {
         let stdin = self.stdin_tx.as_mut().ok_or("No stdin connection")?;
         let json_str = serde_json::to_string(cmd).map_err(|e| e.to_string())?;
 
-        stdin.write_all(json_str.as_bytes()).map_err(|e| format!("stdin write: {}", e))?;
-        stdin.write_all(b"\n").map_err(|e| format!("stdin newline: {}", e))?;
+        stdin
+            .write_all(json_str.as_bytes())
+            .map_err(|e| format!("stdin write: {}", e))?;
+        stdin
+            .write_all(b"\n")
+            .map_err(|e| format!("stdin newline: {}", e))?;
         stdin.flush().map_err(|e| format!("stdin flush: {}", e))?;
 
         // Wait for response (60s timeout for transcription)
@@ -157,7 +174,11 @@ impl WhisperServer {
 pub fn whisper_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let (running, ready, backend) = {
         let whisper = state.whisper.lock().unwrap();
-        (whisper.process.is_some(), whisper.ready, whisper.backend.clone())
+        (
+            whisper.process.is_some(),
+            whisper.ready,
+            whisper.backend.clone(),
+        )
     };
     // Report INSTALLED-on-disk, not merely "server process running". The whisper
     // server lazy-starts on first mic use and is killed on quit, so keying the
@@ -217,7 +238,12 @@ fn whisper_package_installed(state: &AppState) -> bool {
 }
 
 #[tauri::command]
-pub fn transcribe(app: AppHandle, audio_base64: String, content_type: String, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub fn transcribe(
+    app: AppHandle,
+    audio_base64: String,
+    content_type: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     let audio_bytes = base64::engine::general_purpose::STANDARD
         .decode(&audio_base64)
         .map_err(|e| format!("base64 decode: {}", e))?;
@@ -227,30 +253,47 @@ pub fn transcribe(app: AppHandle, audio_base64: String, content_type: String, st
     }
 
     // Determine file extension
-    let ext = if content_type.contains("wav") { ".wav" }
-        else if content_type.contains("mp3") || content_type.contains("mpeg") { ".mp3" }
-        else if content_type.contains("ogg") { ".ogg" }
-        else if content_type.contains("mp4") || content_type.contains("m4a") { ".m4a" }
-        else { ".webm" };
+    let ext = if content_type.contains("wav") {
+        ".wav"
+    } else if content_type.contains("mp3") || content_type.contains("mpeg") {
+        ".mp3"
+    } else if content_type.contains("ogg") {
+        ".ogg"
+    } else if content_type.contains("mp4") || content_type.contains("m4a") {
+        ".m4a"
+    } else {
+        ".webm"
+    };
 
     // Write to temp file
     let tmp_dir = std::env::temp_dir();
-    let tmp_file = tmp_dir.join(format!("whisper-{}{}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0), ext));
+    let tmp_file = tmp_dir.join(format!(
+        "whisper-{}{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0),
+        ext
+    ));
 
-    std::fs::write(&tmp_file, &audio_bytes)
-        .map_err(|e| format!("Write temp file: {}", e))?;
+    std::fs::write(&tmp_file, &audio_bytes).map_err(|e| format!("Write temp file: {}", e))?;
 
     let audio_path = tmp_file.to_string_lossy().replace('\\', "/");
-    println!("[Whisper] Transcribing: {} ({:.1} KB)", audio_path, audio_bytes.len() as f64 / 1024.0);
+    println!(
+        "[Whisper] Transcribing: {} ({:.1} KB)",
+        audio_path,
+        audio_bytes.len() as f64 / 1024.0
+    );
 
     // Lazy-start Whisper on first use — it is no longer pre-started at launch
     // (it kept ~360 MB resident even in Cloud mode). Block until the server is
     // spawned; send_command below then waits for the model to finish loading.
     {
-        let needs_start = state.whisper.lock().map(|w| w.process.is_none()).unwrap_or(true);
+        let needs_start = state
+            .whisper
+            .lock()
+            .map(|w| w.process.is_none())
+            .unwrap_or(true);
         if needs_start {
             // Resolve the SAME interpreter install_whisper used (ComfyUI venv if
             // present, else system Python). Using state.python_bin here meant a
@@ -279,9 +322,14 @@ pub fn transcribe(app: AppHandle, audio_base64: String, content_type: String, st
     match result {
         Ok(response) => {
             if let Some(transcript) = response.get("transcript").and_then(|t| t.as_str()) {
-                println!("[Whisper] Transcribed: \"{}\" (lang: {})",
+                println!(
+                    "[Whisper] Transcribed: \"{}\" (lang: {})",
                     transcript.chars().take(80).collect::<String>(),
-                    response.get("language").and_then(|l| l.as_str()).unwrap_or("?"));
+                    response
+                        .get("language")
+                        .and_then(|l| l.as_str())
+                        .unwrap_or("?")
+                );
                 info!("transcribe ok");
             }
             Ok(response)
@@ -294,7 +342,11 @@ pub fn transcribe(app: AppHandle, audio_base64: String, content_type: String, st
 }
 
 /// Synchronous whisper startup (runs in background thread)
-pub fn auto_start_whisper_sync(app: &tauri::AppHandle, python_bin: &str, whisper: &Arc<Mutex<WhisperServer>>) {
+pub fn auto_start_whisper_sync(
+    app: &tauri::AppHandle,
+    python_bin: &str,
+    whisper: &Arc<Mutex<WhisperServer>>,
+) {
     // Check if faster-whisper is installed
     let mut cmd = Command::new(python_bin);
     cmd.args(["-c", "import faster_whisper"]);
@@ -313,14 +365,19 @@ pub fn auto_start_whisper_sync(app: &tauri::AppHandle, python_bin: &str, whisper
     }
 
     // Resolve whisper_server.py path from bundled resources
-    let script_path: Option<PathBuf> = app.path()
+    let script_path: Option<PathBuf> = app
+        .path()
         .resource_dir()
         .ok()
         .map(|d: PathBuf| d.join("resources").join("whisper_server.py"))
         .filter(|p: &PathBuf| p.exists())
         .or_else(|| {
             let dev_path = PathBuf::from("public").join("whisper_server.py");
-            if dev_path.exists() { Some(dev_path) } else { None }
+            if dev_path.exists() {
+                Some(dev_path)
+            } else {
+                None
+            }
         });
 
     match script_path {

@@ -39,6 +39,7 @@ import { buildDynamicWorkflow, buildLocalOpWorkflow, checkVideoOutputCapability 
 import { getAllNodeInfo, clearNodeCache } from '../api/comfyui-nodes'
 import { installCustomNodes } from '../api/discover'
 import { backendCall } from '../api/backend'
+import { archiveGeneratedVideo } from '../api/generated-video'
 import { checkPromptSafety, SAFETY_BLOCK_MESSAGE } from '../lib/render/safety'
 import {
   clearTrainingSet, stageTrainingImage, startCharacterTraining,
@@ -808,7 +809,7 @@ export function useCreate() {
                   const files: ComfyUIOutput[] = extractComfyOutputFiles(outputs[nodeId])
                   for (const file of files) {
                     found = true
-                    addToGallery({
+                    const galleryItem = {
                       id: uuid(), type: galleryTypeForFile(file.filename, mode),
                       filename: file.filename, subfolder: file.subfolder ?? '',
                       prompt, negativePrompt, model: activeModel,
@@ -816,6 +817,10 @@ export function useCreate() {
                       seed: seed === -1 ? 0 : seed,
                       steps, cfgScale, sampler, scheduler, width, height, batchSize,
                       createdAt: Date.now(), builderUsed, intent,
+                    } as const
+                    addToGallery(galleryItem)
+                    void archiveGeneratedVideo(galleryItem).catch((error) => {
+                      console.warn('[useCreate] Could not archive generated video:', error)
                     })
                   }
                 }
@@ -906,7 +911,7 @@ export function useCreate() {
                     const files: ComfyUIOutput[] = extractComfyOutputFiles(outputs[nodeId])
                     for (const file of files) {
                       found = true
-                      addToGallery({
+                      const galleryItem = {
                         id: uuid(), type: galleryTypeForFile(file.filename, mode),
                         filename: file.filename, subfolder: file.subfolder ?? '',
                         prompt, negativePrompt, model: activeModel,
@@ -914,6 +919,10 @@ export function useCreate() {
                         seed: seed === -1 ? 0 : seed,
                         steps, cfgScale, sampler, scheduler, width, height, batchSize,
                         createdAt: Date.now(), builderUsed,
+                      } as const
+                      addToGallery(galleryItem)
+                      void archiveGeneratedVideo(galleryItem).catch((error) => {
+                        console.warn('[useCreate] Could not archive generated video:', error)
                       })
                     }
                   }
@@ -1011,7 +1020,7 @@ export function useCreate() {
                   const files: ComfyUIOutput[] = extractComfyOutputFiles(outputs[nodeId])
                   for (const file of files) {
                     found = true
-                    addToGallery({
+                    const galleryItem = {
                       id: uuid(), type: galleryTypeForFile(file.filename, mode),
                       filename: file.filename, subfolder: file.subfolder ?? '',
                       prompt, negativePrompt, model: activeModel,
@@ -1019,6 +1028,10 @@ export function useCreate() {
                       seed: seed === -1 ? 0 : seed,
                       steps, cfgScale, sampler, scheduler, width, height, batchSize,
                       createdAt: Date.now(), builderUsed, intent,
+                    } as const
+                    addToGallery(galleryItem)
+                    void archiveGeneratedVideo(galleryItem).catch((error) => {
+                      console.warn('[useCreate] Could not archive generated video:', error)
                     })
                   }
                 }

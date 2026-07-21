@@ -3,8 +3,7 @@ use tauri::Emitter;
 /// Validate that an external URL is safe to fetch (no SSRF).
 /// Blocks private IP ranges, non-HTTP schemes, and localhost.
 fn validate_external_url(raw: &str) -> Result<(), String> {
-    let parsed = url::Url::parse(raw)
-        .map_err(|e| format!("Invalid URL: {}", e))?;
+    let parsed = url::Url::parse(raw).map_err(|e| format!("Invalid URL: {}", e))?;
 
     // Only allow http and https
     match parsed.scheme() {
@@ -15,8 +14,12 @@ fn validate_external_url(raw: &str) -> Result<(), String> {
     let host = parsed.host_str().unwrap_or("");
 
     // Block localhost variants
-    if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]"
-        || host == "0.0.0.0" || host.ends_with(".localhost")
+    if host == "localhost"
+        || host == "127.0.0.1"
+        || host == "::1"
+        || host == "[::1]"
+        || host == "0.0.0.0"
+        || host.ends_with(".localhost")
     {
         return Err("Blocked: localhost access not allowed for external fetch".into());
     }
@@ -24,13 +27,14 @@ fn validate_external_url(raw: &str) -> Result<(), String> {
     // Block private/reserved IPv4 ranges
     if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
         let octets = ip.octets();
-        let blocked = matches!(octets,
+        let blocked = matches!(
+            octets,
             [10, ..] |                                          // 10.0.0.0/8
             [172, 16..=31, ..] |                                // 172.16.0.0/12
             [192, 168, ..] |                                    // 192.168.0.0/16
             [127, ..] |                                         // 127.0.0.0/8
             [169, 254, ..] |                                    // 169.254.0.0/16 (link-local)
-            [0, ..]                                             // 0.0.0.0/8
+            [0, ..] // 0.0.0.0/8
         );
         if blocked {
             return Err(format!("Blocked: private/reserved IP {}", ip));
@@ -38,11 +42,14 @@ fn validate_external_url(raw: &str) -> Result<(), String> {
     }
 
     // Block private IPv6 (fc00::/7, fe80::/10, ::1)
-    if let Ok(ip) = host.trim_matches(|c| c == '[' || c == ']').parse::<std::net::Ipv6Addr>() {
+    if let Ok(ip) = host
+        .trim_matches(|c| c == '[' || c == ']')
+        .parse::<std::net::Ipv6Addr>()
+    {
         let segments = ip.segments();
         let blocked = ip.is_loopback()
             || (segments[0] & 0xfe00) == 0xfc00   // fc00::/7 (unique local)
-            || (segments[0] & 0xffc0) == 0xfe80;  // fe80::/10 (link-local)
+            || (segments[0] & 0xffc0) == 0xfe80; // fe80::/10 (link-local)
         if blocked {
             return Err(format!("Blocked: private/reserved IPv6 {}", ip));
         }
@@ -64,7 +71,8 @@ pub async fn fetch_external(url: String) -> Result<String, String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    let resp = client.get(&url)
+    let resp = client
+        .get(&url)
         .send()
         .await
         .map_err(|e| format!("fetch_external: {}", e))?;
@@ -89,7 +97,8 @@ pub async fn fetch_external_bytes(url: String) -> Result<Vec<u8>, String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    let resp = client.get(&url)
+    let resp = client
+        .get(&url)
         .send()
         .await
         .map_err(|e| format!("fetch_external_bytes: {}", e))?;
@@ -98,7 +107,10 @@ pub async fn fetch_external_bytes(url: String) -> Result<Vec<u8>, String> {
         return Err(format!("HTTP {}: {}", resp.status().as_u16(), url));
     }
 
-    resp.bytes().await.map(|b| b.to_vec()).map_err(|e| e.to_string())
+    resp.bytes()
+        .await
+        .map(|b| b.to_vec())
+        .map_err(|e| e.to_string())
 }
 
 /// Extract the host from `ollama_base` + `comfy_host` so we can allow-list
@@ -145,10 +157,12 @@ fn is_blocked_proxy_host(host: &str) -> bool {
     // slip past the v4 string/parse checks).
     if let Some(v4) = as_ipv4(&h) {
         let o = v4.octets();
-        if o[0] == 169 && o[1] == 254 {     // 169.254.0.0/16 incl. AWS/GCP/Azure IMDS
+        if o[0] == 169 && o[1] == 254 {
+            // 169.254.0.0/16 incl. AWS/GCP/Azure IMDS
             return true;
         }
-        if o == [100, 100, 100, 200] {       // Alibaba IMDS
+        if o == [100, 100, 100, 200] {
+            // Alibaba IMDS
             return true;
         }
     }
@@ -176,7 +190,8 @@ pub(crate) fn validate_public_url(raw: &str) -> Result<(), String> {
     // legitimate public hostname is never all-digits or `0x…`.
     let h = host.trim_matches(|c| c == '[' || c == ']').to_lowercase();
     let is_decimal_int = !h.is_empty() && h.chars().all(|c| c.is_ascii_digit());
-    let is_hex_int = h.starts_with("0x") && h.len() > 2 && h[2..].chars().all(|c| c.is_ascii_hexdigit());
+    let is_hex_int =
+        h.starts_with("0x") && h.len() > 2 && h[2..].chars().all(|c| c.is_ascii_hexdigit());
     if is_decimal_int || is_hex_int {
         return Err("Blocked: numeric host form (possible IP-encoding bypass)".into());
     }
@@ -214,8 +229,12 @@ fn is_registerable_lan_host(host: &str) -> bool {
     {
         return true;
     }
-    if h.ends_with(".local") || h.ends_with(".lan") || h.ends_with(".internal")
-        || h.ends_with(".intra") || h.ends_with(".home") || h.ends_with(".home.arpa")
+    if h.ends_with(".local")
+        || h.ends_with(".lan")
+        || h.ends_with(".internal")
+        || h.ends_with(".intra")
+        || h.ends_with(".home")
+        || h.ends_with(".home.arpa")
     {
         return true;
     }
@@ -232,7 +251,7 @@ fn is_registerable_lan_host(host: &str) -> bool {
         if let std::net::IpAddr::V6(v6) = ip {
             let s = v6.segments();
             return (s[0] & 0xfe00) == 0xfc00   // fc00::/7 ULA
-                || (s[0] & 0xffc0) == 0xfe80;   // fe80::/10 link-local
+                || (s[0] & 0xffc0) == 0xfe80; // fe80::/10 link-local
         }
         return false;
     }
@@ -247,8 +266,7 @@ fn is_registerable_lan_host(host: &str) -> bool {
 /// LU at. A JS-level compromise still cannot reach arbitrary intranet
 /// services; it can only reach the host the user already wanted to reach.
 fn validate_proxy_url(raw: &str, state: &crate::state::AppState) -> Result<(), String> {
-    let parsed = url::Url::parse(raw)
-        .map_err(|e| format!("Invalid URL: {}", e))?;
+    let parsed = url::Url::parse(raw).map_err(|e| format!("Invalid URL: {}", e))?;
 
     match parsed.scheme() {
         "http" | "https" => {}
@@ -261,13 +279,15 @@ fn validate_proxy_url(raw: &str, state: &crate::state::AppState) -> Result<(), S
     // somehow got allow-listed (SSRF defense-in-depth, Bug A).
     if is_blocked_proxy_host(&host) {
         return Err(format!(
-            "Blocked: '{}' is a metadata/link-local address and is never proxied", host
+            "Blocked: '{}' is a metadata/link-local address and is never proxied",
+            host
         ));
     }
 
     // Always-allowed: localhost variants. Covers the common case + any
     // backend bound to 0.0.0.0 on the same machine.
-    let is_local = matches!(host.as_str(),
+    let is_local = matches!(
+        host.as_str(),
         "localhost" | "127.0.0.1" | "::1" | "[::1]" | "0.0.0.0"
     ) || host.ends_with(".localhost");
     if is_local {
@@ -275,7 +295,9 @@ fn validate_proxy_url(raw: &str, state: &crate::state::AppState) -> Result<(), S
     }
 
     // Configured Ollama host (Issue #31: users with OLLAMA_HOST=192.168.x.x).
-    let ollama_host = state.ollama_base.lock()
+    let ollama_host = state
+        .ollama_base
+        .lock()
         .ok()
         .map(|g| configured_host(&g))
         .unwrap_or_default();
@@ -284,7 +306,9 @@ fn validate_proxy_url(raw: &str, state: &crate::state::AppState) -> Result<(), S
     }
 
     // Configured ComfyUI host (v2.3.6 feature).
-    let comfy_host = state.comfy_host.lock()
+    let comfy_host = state
+        .comfy_host
+        .lock()
         .ok()
         .map(|g| configured_host(&g))
         .unwrap_or_default();
@@ -382,7 +406,9 @@ pub async fn proxy_localhost(
     };
 
     if let Some(body_str) = body {
-        request = request.header("Content-Type", "application/json").body(body_str);
+        request = request
+            .header("Content-Type", "application/json")
+            .body(body_str);
     }
 
     let resp = request
@@ -403,7 +429,12 @@ pub async fn proxy_localhost(
 /// non-streaming callers (e.g. proxy-download). For chat, use the chunked variant
 /// below so a long generation doesn't look like a multi-minute "model loading" hang.
 #[tauri::command]
-pub async fn proxy_localhost_stream(url: String, method: Option<String>, body: Option<String>, state: tauri::State<'_, crate::state::AppState>) -> Result<Vec<u8>, String> {
+pub async fn proxy_localhost_stream(
+    url: String,
+    method: Option<String>,
+    body: Option<String>,
+    state: tauri::State<'_, crate::state::AppState>,
+) -> Result<Vec<u8>, String> {
     validate_proxy_url(&url, &state)?;
 
     let client = reqwest::Client::builder()
@@ -422,7 +453,9 @@ pub async fn proxy_localhost_stream(url: String, method: Option<String>, body: O
     };
 
     if let Some(body_str) = body {
-        request = request.header("Content-Type", "application/json").body(body_str);
+        request = request
+            .header("Content-Type", "application/json")
+            .body(body_str);
     }
 
     let resp = request
@@ -436,7 +469,10 @@ pub async fn proxy_localhost_stream(url: String, method: Option<String>, body: O
         return Err(format!("HTTP {}: {}", status, text));
     }
 
-    resp.bytes().await.map(|b| b.to_vec()).map_err(|e| e.to_string())
+    resp.bytes()
+        .await
+        .map(|b| b.to_vec())
+        .map_err(|e| e.to_string())
 }
 
 /// Chunked streaming localhost proxy for Ollama chat (David 2026-06-02).
@@ -492,7 +528,9 @@ pub async fn proxy_localhost_stream_chunked(
         };
 
         if let Some(body_str) = body {
-            request = request.header("Content-Type", "application/json").body(body_str);
+            request = request
+                .header("Content-Type", "application/json")
+                .body(body_str);
         }
 
         // Race the request against cancellation even during connect/headers.
@@ -575,7 +613,9 @@ pub async fn comfy_upload_image(
     if file_bytes.is_empty() {
         return Err("the source image is empty (0 bytes)".to_string());
     }
-    let ct = content_type.filter(|c| !c.is_empty()).unwrap_or_else(|| "image/png".to_string());
+    let ct = content_type
+        .filter(|c| !c.is_empty())
+        .unwrap_or_else(|| "image/png".to_string());
     let part = reqwest::multipart::Part::bytes(file_bytes)
         .file_name(filename)
         .mime_str(&ct)
@@ -587,7 +627,11 @@ pub async fn comfy_upload_image(
         .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| e.to_string())?;
-    let resp = client.post(&url).multipart(form).send().await
+    let resp = client
+        .post(&url)
+        .multipart(form)
+        .send()
+        .await
         .map_err(|e| format!("comfy_upload_image: {}", e))?;
     let status = resp.status();
     let body = resp.text().await.unwrap_or_default();
@@ -600,7 +644,11 @@ pub async fn comfy_upload_image(
 /// Streaming Ollama model pull — emits per-model progress events.
 /// Each event is a JSON object: { "model": "name", "data": { ...ollama progress... } }
 #[tauri::command]
-pub async fn pull_model_stream(app: tauri::AppHandle, state: tauri::State<'_, crate::state::AppState>, name: String) -> Result<(), String> {
+pub async fn pull_model_stream(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::state::AppState>,
+    name: String,
+) -> Result<(), String> {
     use futures_util::StreamExt;
 
     // Create cancellation token for this pull
@@ -622,7 +670,10 @@ pub async fn pull_model_stream(app: tauri::AppHandle, state: tauri::State<'_, cr
 
     // Route to the configured Ollama base (Issue #31 — was hardcoded
     // http://localhost:11434 so remote Ollama hosts never got the pull).
-    let ollama_base = state.ollama_base.lock().ok()
+    let ollama_base = state
+        .ollama_base
+        .lock()
+        .ok()
         .map(|g| g.clone())
         .unwrap_or_else(|| "http://localhost:11434".to_string());
     let pull_url = format!("{}/api/pull", ollama_base.trim_end_matches('/'));
@@ -751,7 +802,10 @@ pub async fn pull_model_stream(app: tauri::AppHandle, state: tauri::State<'_, cr
 
 /// Cancel an active Ollama model pull
 #[tauri::command]
-pub fn cancel_model_pull(state: tauri::State<'_, crate::state::AppState>, name: String) -> Result<(), String> {
+pub fn cancel_model_pull(
+    state: tauri::State<'_, crate::state::AppState>,
+    name: String,
+) -> Result<(), String> {
     let mut tokens = state.pull_tokens.lock().unwrap();
     if let Some(token) = tokens.remove(&name) {
         token.cancel();
@@ -775,7 +829,8 @@ pub async fn ollama_search(query: String) -> Result<serde_json::Value, String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    let resp = client.get(&url)
+    let resp = client
+        .get(&url)
         .header("Accept", "application/json")
         .send()
         .await
@@ -799,17 +854,23 @@ mod tests {
         // Classic SSRF metadata targets — must be blocked even if registered.
         assert!(is_blocked_proxy_host("169.254.169.254")); // AWS/GCP/Azure IMDS
         assert!(is_blocked_proxy_host("100.100.100.200")); // Alibaba
-        assert!(is_blocked_proxy_host("fd00:ec2::254"));   // GCP IPv6 IMDS
+        assert!(is_blocked_proxy_host("fd00:ec2::254")); // GCP IPv6 IMDS
         assert!(is_blocked_proxy_host("[fd00:ec2::254]")); // bracketed form
-        // Whole IPv4 link-local 169.254.0.0/16.
+                                                           // Whole IPv4 link-local 169.254.0.0/16.
         assert!(is_blocked_proxy_host("169.254.0.1"));
         assert!(is_blocked_proxy_host("169.254.255.255"));
     }
 
     #[test]
     fn allows_real_lan_and_localhost() {
-        for h in ["192.168.1.50", "10.0.0.5", "172.16.4.4", "localhost",
-                  "127.0.0.1", "100.64.0.1" /* Tailscale CGNAT, not metadata */] {
+        for h in [
+            "192.168.1.50",
+            "10.0.0.5",
+            "172.16.4.4",
+            "localhost",
+            "127.0.0.1",
+            "100.64.0.1", /* Tailscale CGNAT, not metadata */
+        ] {
             assert!(!is_blocked_proxy_host(h), "{} should not be blocked", h);
         }
     }
@@ -820,8 +881,8 @@ mod tests {
         // bypass the block.
         assert!(is_blocked_proxy_host("::ffff:169.254.169.254"));
         assert!(is_blocked_proxy_host("[::ffff:169.254.169.254]"));
-        assert!(is_blocked_proxy_host("::ffff:a9fe:a9fe"));   // hex form of 169.254.169.254
-        assert!(is_blocked_proxy_host("::ffff:6464:64c8"));   // 100.100.100.200 mapped
+        assert!(is_blocked_proxy_host("::ffff:a9fe:a9fe")); // hex form of 169.254.169.254
+        assert!(is_blocked_proxy_host("::ffff:6464:64c8")); // 100.100.100.200 mapped
         assert!(is_blocked_proxy_host("fd00:ec2::254"));
         // Real LAN/global addresses are not metadata.
         assert!(!is_blocked_proxy_host("192.168.0.74"));
@@ -831,9 +892,15 @@ mod tests {
     #[test]
     fn validate_public_url_blocks_private_and_loopback() {
         for u in [
-            "http://localhost/x", "http://127.0.0.1/x", "http://10.0.0.5/x",
-            "http://192.168.1.1/x", "http://172.16.4.4/x", "http://169.254.169.254/x",
-            "http://[::1]/x", "http://[fd00::1]/x", "http://0.0.0.0/x",
+            "http://localhost/x",
+            "http://127.0.0.1/x",
+            "http://10.0.0.5/x",
+            "http://192.168.1.1/x",
+            "http://172.16.4.4/x",
+            "http://169.254.169.254/x",
+            "http://[::1]/x",
+            "http://[fd00::1]/x",
+            "http://0.0.0.0/x",
         ] {
             assert!(validate_public_url(u).is_err(), "{} should be blocked", u);
         }
@@ -857,8 +924,11 @@ mod tests {
     #[test]
     fn validate_public_url_allows_real_public_hosts() {
         for u in [
-            "https://huggingface.co/model", "https://civitai.com/api",
-            "http://example.com/", "https://8.8.8.8/", "https://3com.com/",
+            "https://huggingface.co/model",
+            "https://civitai.com/api",
+            "http://example.com/",
+            "https://8.8.8.8/",
+            "https://3com.com/",
         ] {
             assert!(validate_public_url(u).is_ok(), "{} should be allowed", u);
         }
@@ -867,20 +937,47 @@ mod tests {
     #[test]
     fn register_only_private_lan_hosts() {
         // M2: public + junk hosts must NOT be registerable; private/LAN are.
-        for ok in ["192.168.0.74", "10.0.0.5", "172.16.4.4", "localhost",
-                   "127.0.0.1", "100.64.0.1", "nas", "box.lan", "fd00::1"] {
-            assert!(is_registerable_lan_host(ok), "{} should be registerable", ok);
+        for ok in [
+            "192.168.0.74",
+            "10.0.0.5",
+            "172.16.4.4",
+            "localhost",
+            "127.0.0.1",
+            "100.64.0.1",
+            "nas",
+            "box.lan",
+            "fd00::1",
+        ] {
+            assert!(
+                is_registerable_lan_host(ok),
+                "{} should be registerable",
+                ok
+            );
         }
-        for bad in ["8.8.8.8", "api.openai.com", "attacker.com", "169.254.169.254",
-                    "::ffff:169.254.169.254", "javascript:alert(1)", "2606:4700::1111",
-                    "192.168.0.74:1234"] {
-            assert!(!is_registerable_lan_host(bad), "{} should NOT be registerable", bad);
+        for bad in [
+            "8.8.8.8",
+            "api.openai.com",
+            "attacker.com",
+            "169.254.169.254",
+            "::ffff:169.254.169.254",
+            "javascript:alert(1)",
+            "2606:4700::1111",
+            "192.168.0.74:1234",
+        ] {
+            assert!(
+                !is_registerable_lan_host(bad),
+                "{} should NOT be registerable",
+                bad
+            );
         }
     }
 
     #[test]
     fn configured_host_extracts_from_url_or_bare() {
-        assert_eq!(configured_host("http://192.168.1.50:1234/v1"), "192.168.1.50");
+        assert_eq!(
+            configured_host("http://192.168.1.50:1234/v1"),
+            "192.168.1.50"
+        );
         assert_eq!(configured_host("192.168.1.50"), "192.168.1.50");
         assert_eq!(configured_host("HTTP://Host.LAN:8080"), "host.lan");
         assert_eq!(configured_host("  nas  "), "nas");

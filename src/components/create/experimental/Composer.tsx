@@ -24,6 +24,7 @@ import { Slider } from '../ui/Slider'
 import { Tooltip } from '../ui/Tooltip'
 import { cn } from '../ui/cn'
 import { useClickAway } from '../ui/useClickAway'
+import { GENERATED_VIDEO_DIRECTORY } from '../../../api/generated-video'
 
 interface Props {
   onOpenAdvanced: () => void
@@ -153,6 +154,12 @@ export function Composer({ onOpenAdvanced }: Props) {
       <div className="mx-auto w-full max-w-[760px] space-y-2.5">
         {special && <SpecialControls intent={intent} />}
         {!isUtility && <LaneControls />}
+
+        {intentKind === 'video' && backend === 'local' && (
+          <div className="t-body text-gray-500 truncate" title={GENERATED_VIDEO_DIRECTORY}>
+            Completed videos are saved to <span className="font-mono text-gray-400">{GENERATED_VIDEO_DIRECTORY}</span>
+          </div>
+        )}
 
         <div className="rounded-[var(--radius-panel)] bg-white/[0.03] border border-white/[0.06] focus-within:border-white/15 transition-colors">
           {needPrompt && (

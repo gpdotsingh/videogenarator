@@ -34,7 +34,11 @@ mod chunked {
     /// Per-entry budget in UTF-16 units. keyring's windows-native backend
     /// rejects blobs over 2560 bytes (1280 units) — stay comfortably under.
     /// macOS has no limit, so it never chunks and writes stay single-entry.
-    const MAX_UNITS: usize = if cfg!(target_os = "windows") { 1000 } else { usize::MAX };
+    const MAX_UNITS: usize = if cfg!(target_os = "windows") {
+        1000
+    } else {
+        usize::MAX
+    };
 
     /// Head marker for a chunked value. No provider key or session JSON ever
     /// starts with this, so plain pre-existing entries read back unchanged.
@@ -94,7 +98,9 @@ mod chunked {
         // no orphaned chunk entries behind.
         let old = stored_chunks(account).unwrap_or(0);
         if value.encode_utf16().count() <= MAX_UNITS {
-            entry(account)?.set_password(value).map_err(|e| e.to_string())?;
+            entry(account)?
+                .set_password(value)
+                .map_err(|e| e.to_string())?;
             for i in 0..old {
                 let _ = delete_entry(&chunk_account(account, i));
             }

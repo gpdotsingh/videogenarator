@@ -100,7 +100,11 @@ async fn probe_http(url: &str) -> BackendProbe {
         Ok(resp) => {
             let code = resp.status();
             if code.is_success() {
-                BackendProbe { status: ProbeStatus::Ok, detail: String::new(), endpoint }
+                BackendProbe {
+                    status: ProbeStatus::Ok,
+                    detail: String::new(),
+                    endpoint,
+                }
             } else {
                 BackendProbe {
                     status: ProbeStatus::Error,
@@ -120,14 +124,23 @@ async fn probe_http(url: &str) -> BackendProbe {
             // refused", not the Unix "Connection refused" string). A request
             // timeout (backend up but wedged) also reads as "not usable now",
             // so we treat both as Unreachable for a friendlier UI hint.
-            if e.is_connect() || e.is_timeout()
+            if e.is_connect()
+                || e.is_timeout()
                 || msg.contains("Connection refused")
                 || msg.contains("ConnectFailed")
                 || msg.contains("actively refused")
             {
-                BackendProbe { status: ProbeStatus::Unreachable, detail: head, endpoint }
+                BackendProbe {
+                    status: ProbeStatus::Unreachable,
+                    detail: head,
+                    endpoint,
+                }
             } else {
-                BackendProbe { status: ProbeStatus::Error, detail: head, endpoint }
+                BackendProbe {
+                    status: ProbeStatus::Error,
+                    detail: head,
+                    endpoint,
+                }
             }
         }
     }

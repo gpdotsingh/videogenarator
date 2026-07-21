@@ -1,20 +1,19 @@
-use std::sync::Arc;
-use std::collections::HashMap;
-use std::net::SocketAddr;
 use axum::{
-    Router,
     body::Body,
-    extract::{State as AxumState, Request, ConnectInfo},
-    http::{StatusCode, HeaderMap, header, Method},
+    extract::{ConnectInfo, Request, State as AxumState},
+    http::{header, HeaderMap, Method, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
     routing::{any, get, post},
-    Json,
+    Json, Router,
 };
-use tower_http::cors::CorsLayer;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex as TokioMutex;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
+use tokio::sync::Mutex as TokioMutex;
+use tower_http::cors::CorsLayer;
 use tracing::{error, info, warn};
 
 #[cfg(target_os = "windows")]
@@ -32,12 +31,12 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 // countdown + the current code, and the JWT issued after pairing has its own
 // (separate) lifetime, so this only widens the one-time pairing window.
 const PASSCODE_TTL_SECS: u64 = 900;
-const JWT_TTL_SECS: u64 = 60 * 60;  // 1 hour — how long an authenticated session lasts
-// #73/security-review 2.5.7: hard ceiling on how long a session may keep sliding
-// itself alive. After this (measured from the token's issued-at, which is copied
-// unchanged across refreshes), the sliding refresh stops and the device must
-// re-pair — so a leaked bearer token can't be renewed forever.
-const MAX_SESSION_SECS: u64 = 24 * 60 * 60;  // 24 hours
+const JWT_TTL_SECS: u64 = 60 * 60; // 1 hour — how long an authenticated session lasts
+                                   // #73/security-review 2.5.7: hard ceiling on how long a session may keep sliding
+                                   // itself alive. After this (measured from the token's issued-at, which is copied
+                                   // unchanged across refreshes), the sliding refresh stops and the device must
+                                   // re-pair — so a leaked bearer token can't be renewed forever.
+const MAX_SESSION_SECS: u64 = 24 * 60 * 60; // 24 hours
 const MAX_FAILED_ATTEMPTS: u32 = 3;
 const COOLDOWN_SECS: u64 = 60;
 
@@ -128,7 +127,7 @@ fn generate_passcode() -> String {
 }
 
 fn generate_jwt(secret: &str, ip: &str, sub: &str, iat: u64) -> Result<String, String> {
-    use jsonwebtoken::{encode, Header, EncodingKey};
+    use jsonwebtoken::{encode, EncodingKey, Header};
     let exp = chrono_now_secs() + JWT_TTL_SECS;
     let claims = Claims {
         sub: sub.to_string(),
@@ -136,17 +135,22 @@ fn generate_jwt(secret: &str, ip: &str, sub: &str, iat: u64) -> Result<String, S
         exp: exp as usize,
         iat: iat as usize,
     };
-    encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_bytes()))
-        .map_err(|e| e.to_string())
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .map_err(|e| e.to_string())
 }
 
 fn validate_jwt(secret: &str, token: &str) -> Result<Claims, String> {
-    use jsonwebtoken::{decode, Validation, DecodingKey};
+    use jsonwebtoken::{decode, DecodingKey, Validation};
     let data = decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
         &Validation::default(),
-    ).map_err(|e| format!("Invalid token: {}", e))?;
+    )
+    .map_err(|e| format!("Invalid token: {}", e))?;
     Ok(data.claims)
 }
 
@@ -164,23 +168,25 @@ fn chrono_now_secs() -> u64 {
 /// empty and every client collapsed into the "unknown" bucket — sharing one
 /// rate-limit window and appearing as the same row in Connected Devices.
 fn client_ip(headers: &HeaderMap, socket: Option<SocketAddr>) -> String {
-    if let Some(ip) = headers.get("x-forwarded-for")
+    if let Some(ip) = headers
+        .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.split(',').next())
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
     {
-        return ip.to_string()
+        return ip.to_string();
     }
-    if let Some(ip) = headers.get("x-real-ip")
+    if let Some(ip) = headers
+        .get("x-real-ip")
         .and_then(|v| v.to_str().ok())
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
-        return ip.to_string()
+        return ip.to_string();
     }
     if let Some(addr) = socket {
-        return addr.ip().to_string()
+        return addr.ip().to_string();
     }
     "unknown".to_string()
 }
@@ -214,17 +220,20 @@ async fn auth_middleware(
     }
 
     // Extract JWT from: Authorization header, cookie, or query param
-    let auth_header = req.headers()
+    let auth_header = req
+        .headers()
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    let cookie_header = req.headers()
+    let cookie_header = req
+        .headers()
         .get(header::COOKIE)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    let cookie_token = cookie_header.split(';')
+    let cookie_token = cookie_header
+        .split(';')
         .find_map(|c| {
             let c = c.trim();
             if c.starts_with("lu-remote-token=") {
@@ -235,7 +244,11 @@ async fn auth_middleware(
         })
         .unwrap_or("");
 
-    let query_token = req.uri().query().unwrap_or("").split('&')
+    let query_token = req
+        .uri()
+        .query()
+        .unwrap_or("")
+        .split('&')
         .find(|p| p.starts_with("token="))
         .map(|p| &p[6..])
         .unwrap_or("");
@@ -278,17 +291,21 @@ async fn auth_middleware(
             };
             if !device_known {
                 drop(jwt_secret);
-                return (StatusCode::UNAUTHORIZED, "Session ended — re-pair from the desktop.")
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    "Session ended — re-pair from the desktop.",
+                )
                     .into_response();
             }
             // #73 sliding refresh, now bounded: renew a past-half-life token only
             // while the session (from the unchanging `iat`) is under MAX_SESSION,
             // and carry `iat` forward unchanged so the cap actually bites.
-            let refreshed = if should_slide_session(claims.iat as u64, claims.exp as u64, chrono_now_secs()) {
-                generate_jwt(&jwt_secret, &claims.ip, &claims.sub, claims.iat as u64).ok()
-            } else {
-                None
-            };
+            let refreshed =
+                if should_slide_session(claims.iat as u64, claims.exp as u64, chrono_now_secs()) {
+                    generate_jwt(&jwt_secret, &claims.ip, &claims.sub, claims.iat as u64).ok()
+                } else {
+                    None
+                };
             drop(jwt_secret);
             let mut response = next.run(req).await;
             if let Some(fresh) = refreshed {
@@ -364,9 +381,11 @@ async fn handle_auth(
         if let Some(&(count, cooldown_until)) = pc.failed_attempts.get(&rate_key) {
             if count >= MAX_FAILED_ATTEMPTS && now < cooldown_until {
                 let remaining = cooldown_until - now;
-                return (StatusCode::TOO_MANY_REQUESTS,
-                    format!("Too many attempts. Try again in {}s", remaining)
-                ).into_response();
+                return (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    format!("Too many attempts. Try again in {}s", remaining),
+                )
+                    .into_response();
             }
             // Reset if cooldown expired
             if count >= MAX_FAILED_ATTEMPTS && now >= cooldown_until {
@@ -395,7 +414,8 @@ async fn handle_auth(
         pc.failed_attempts.remove(&rate_key);
     }
 
-    let user_agent = headers.get(header::USER_AGENT)
+    let user_agent = headers
+        .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("unknown")
         .to_string();
@@ -510,7 +530,11 @@ pub(crate) fn resolve_remote_path(
     // attack surface).
     let workspace = crate::commands::agent::agent_workspace_for(chat_id, state);
     let p = Path::new(path);
-    let candidate = if p.is_absolute() { p.to_path_buf() } else { workspace.join(path) };
+    let candidate = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        workspace.join(path)
+    };
     let contained = crate::commands::filesystem::contain_within(&workspace, &candidate)?;
     Ok(contained.to_string_lossy().to_string())
 }
@@ -539,7 +563,10 @@ async fn handle_agent_tool(
     let app_state = match state.app_handle.try_state::<crate::state::AppState>() {
         Some(s) => s,
         None => {
-            eprintln!("[Remote agent] AppState not registered — cannot dispatch tool {}", tool_name);
+            eprintln!(
+                "[Remote agent] AppState not registered — cannot dispatch tool {}",
+                tool_name
+            );
             return graceful_error("AppState unavailable on the desktop side.");
         }
     };
@@ -552,12 +579,11 @@ async fn handle_agent_tool(
         // RCE-equivalent: gated behind the dedicated, default-OFF `shell`
         // permission (NOT `filesystem`) so a remote client can't get arbitrary
         // command/code execution just by having file access enabled.
-        "shell_execute" | "code_execute"
-            => Some(("shell", perms.shell)),
-        "file_read" | "file_write" | "file_list" | "file_search" | "screenshot"
-            => Some(("filesystem", perms.filesystem)),
-        "image_generate"
-            => Some(("process_control", perms.process_control)),
+        "shell_execute" | "code_execute" => Some(("shell", perms.shell)),
+        "file_read" | "file_write" | "file_list" | "file_search" | "screenshot" => {
+            Some(("filesystem", perms.filesystem))
+        }
+        "image_generate" => Some(("process_control", perms.process_control)),
         _ => None,
     };
     if let Some((perm, on)) = needs {
@@ -593,61 +619,143 @@ async fn handle_agent_tool(
 
     let result: Result<serde_json::Value, String> = match tool_name.as_str() {
         "file_read" => {
-            let path = body.args.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if path.is_empty() { Err("file_read needs a non-empty `path` argument.".into()) }
-            else { crate::commands::agent::file_read(path, chat_id.clone(), app_state.clone()) }
+            let path = body
+                .args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if path.is_empty() {
+                Err("file_read needs a non-empty `path` argument.".into())
+            } else {
+                crate::commands::agent::file_read(path, chat_id.clone(), app_state.clone())
+            }
         }
         "file_write" => {
-            let path = body.args.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let content = body.args.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if path.is_empty() { Err("file_write needs a non-empty `path` argument.".into()) }
-            else { crate::commands::agent::file_write(path, content, chat_id.clone(), app_state.clone()) }
+            let path = body
+                .args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let content = body
+                .args
+                .get("content")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if path.is_empty() {
+                Err("file_write needs a non-empty `path` argument.".into())
+            } else {
+                crate::commands::agent::file_write(
+                    path,
+                    content,
+                    chat_id.clone(),
+                    app_state.clone(),
+                )
+            }
         }
         "code_execute" => {
-            let code = body.args.get("code").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let code = body
+                .args
+                .get("code")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let timeout = body.args.get("timeout").and_then(|v| v.as_u64());
-            if code.is_empty() { Err("code_execute needs a non-empty `code` argument.".into()) }
-            else { crate::commands::agent::execute_code(code, timeout, chat_id.clone(), None, app_state) }
+            if code.is_empty() {
+                Err("code_execute needs a non-empty `code` argument.".into())
+            } else {
+                crate::commands::agent::execute_code(
+                    code,
+                    timeout,
+                    chat_id.clone(),
+                    None,
+                    app_state,
+                )
+            }
         }
         "web_search" => {
-            let query = body.args.get("query").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let count = body.args.get("maxResults")
+            let query = body
+                .args
+                .get("query")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let count = body
+                .args
+                .get("maxResults")
                 .or_else(|| body.args.get("count"))
                 .and_then(|v| v.as_u64())
                 .map(|n| n as usize);
-            if query.is_empty() { Err("web_search needs a non-empty `query` argument.".into()) }
+            if query.is_empty() {
+                Err("web_search needs a non-empty `query` argument.".into())
+            }
             // Remote clients carry no provider settings — None/None/None =
             // 'auto' without keys, i.e. the free tiers (pre-2.5.3 behaviour).
-            else { crate::commands::search::web_search(query, count, None, None, None, app_state).await }
+            else {
+                crate::commands::search::web_search(query, count, None, None, None, app_state).await
+            }
         }
         "web_fetch" => {
-            let url = body.args.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if url.is_empty() { Err("web_fetch needs a non-empty `url` argument.".into()) }
-            else { crate::commands::search::web_fetch(url).await }
+            let url = body
+                .args
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if url.is_empty() {
+                Err("web_fetch needs a non-empty `url` argument.".into())
+            } else {
+                crate::commands::search::web_fetch(url).await
+            }
         }
         "file_list" => {
-            let raw_path = body.args.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let raw_path = body
+                .args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let recursive = body.args.get("recursive").and_then(|v| v.as_bool());
-            let pattern = body.args.get("pattern").and_then(|v| v.as_str()).map(String::from);
-            if raw_path.is_empty() { Err("file_list needs a non-empty `path` argument.".into()) }
-            else {
+            let pattern = body
+                .args
+                .get("pattern")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            if raw_path.is_empty() {
+                Err("file_list needs a non-empty `path` argument.".into())
+            } else {
                 // Pass the user-picked Remote workspace as the working dir so
                 // fs_list resolves relatives there AND re-applies the path-jail
                 // against it — an absolute or `..` path can't escape the
                 // workspace (security: remote = network surface).
-                let ws = crate::commands::agent::agent_workspace_for(chat_id.as_deref(), &app_state)
-                    .to_string_lossy().to_string();
+                let ws =
+                    crate::commands::agent::agent_workspace_for(chat_id.as_deref(), &app_state)
+                        .to_string_lossy()
+                        .to_string();
                 crate::commands::filesystem::fs_list(raw_path, recursive, pattern, None, Some(ws))
             }
         }
         "file_search" => {
-            let raw_path = body.args.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let pattern = body.args.get("query")
+            let raw_path = body
+                .args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let pattern = body
+                .args
+                .get("query")
                 .or_else(|| body.args.get("pattern"))
-                .and_then(|v| v.as_str()).unwrap_or("").to_string();
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             // Bug: AGENT_TOOLS sends `maxResults` (camelCase); also accept
             // snake-case for older clients.
-            let max = body.args.get("maxResults")
+            let max = body
+                .args
+                .get("maxResults")
                 .or_else(|| body.args.get("max_results"))
                 .and_then(|v| v.as_u64())
                 .map(|n| n as u32);
@@ -655,29 +763,48 @@ async fn handle_agent_tool(
                 Err("file_search needs both `path` and `pattern` arguments.".into())
             } else {
                 // Jail to the remote workspace (see file_list above).
-                let ws = crate::commands::agent::agent_workspace_for(chat_id.as_deref(), &app_state)
-                    .to_string_lossy().to_string();
+                let ws =
+                    crate::commands::agent::agent_workspace_for(chat_id.as_deref(), &app_state)
+                        .to_string_lossy()
+                        .to_string();
                 crate::commands::filesystem::fs_search(raw_path, pattern, max, None, Some(ws))
             }
         }
         "shell_execute" => {
-            let command = body.args.get("command").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if command.is_empty() { Err("shell_execute needs a non-empty `command` argument.".into()) }
-            else {
+            let command = body
+                .args
+                .get("command")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if command.is_empty() {
+                Err("shell_execute needs a non-empty `command` argument.".into())
+            } else {
                 // Default cwd → the per-chat workspace folder so `npm install`
                 // / `git status` / etc. land in the same directory the agent
                 // is writing files to. Without this, shells default to the
                 // app's launch directory and every relative command fails
                 // with "no such file" while the model thinks it succeeded.
-                let cwd_raw = body.args.get("cwd").and_then(|v| v.as_str()).map(String::from);
+                let cwd_raw = body
+                    .args
+                    .get("cwd")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
                 // Jail the cwd to the remote workspace; an out-of-workspace cwd
                 // falls back to the workspace root rather than running anywhere.
                 let cwd = cwd_raw
                     .filter(|c| !c.trim().is_empty())
                     .and_then(|c| resolve_remote_path(&c, chat_id.as_deref(), &app_state).ok())
-                    .or_else(|| Some(crate::commands::agent::agent_workspace_for(chat_id.as_deref(), &app_state)
-                        .to_string_lossy()
-                        .to_string()));
+                    .or_else(|| {
+                        Some(
+                            crate::commands::agent::agent_workspace_for(
+                                chat_id.as_deref(),
+                                &app_state,
+                            )
+                            .to_string_lossy()
+                            .to_string(),
+                        )
+                    });
                 // Best-effort: ensure the cwd exists before the shell command
                 // runs. Saves the model an extra "Error: directory not found"
                 // round-trip for the very first shell call in a new chat.
@@ -685,8 +812,21 @@ async fn handle_agent_tool(
                     let _ = std::fs::create_dir_all(dir);
                 }
                 let timeout = body.args.get("timeout").and_then(|v| v.as_u64());
-                let shell = body.args.get("shell").and_then(|v| v.as_str()).map(String::from);
-                crate::commands::shell::shell_execute(command, None, cwd, timeout, shell, chat_id.clone(), None).await
+                let shell = body
+                    .args
+                    .get("shell")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                crate::commands::shell::shell_execute(
+                    command,
+                    None,
+                    cwd,
+                    timeout,
+                    shell,
+                    chat_id.clone(),
+                    None,
+                )
+                .await
             }
         }
         "system_info" => crate::commands::system::system_info(),
@@ -733,7 +873,10 @@ fn graceful_perm_error(tool: &str, permission: &str) -> Response {
         "Tool `{}` is gated behind the `{}` permission. Open Settings (gear icon) and toggle it on.",
         tool, permission
     );
-    eprintln!("[Remote agent] tool `{}` blocked: missing permission `{}`", tool, permission);
+    eprintln!(
+        "[Remote agent] tool `{}` blocked: missing permission `{}`",
+        tool, permission
+    );
     let body = serde_json::json!({
         "error": msg,
         "permission": permission,
@@ -751,7 +894,7 @@ const CHAT_EVENT_MAX_CONTENT: usize = 100 * 1024;
 
 #[derive(Deserialize, Serialize, Clone)]
 struct ChatEventPayload {
-    role: String,       // "user" | "assistant"
+    role: String, // "user" | "assistant"
     content: String,
     #[serde(default)]
     model: String,
@@ -780,13 +923,15 @@ async fn handle_chat_event(
         return (
             StatusCode::BAD_REQUEST,
             "Invalid role (must be 'user' or 'assistant')",
-        ).into_response();
+        )
+            .into_response();
     }
     if body.content.len() > CHAT_EVENT_MAX_CONTENT {
         return (
             StatusCode::PAYLOAD_TOO_LARGE,
             format!("Content exceeds {} bytes", CHAT_EVENT_MAX_CONTENT),
-        ).into_response();
+        )
+            .into_response();
     }
     let _ = state.app_handle.emit("remote-chat-message", &body);
     StatusCode::NO_CONTENT.into_response()
@@ -810,10 +955,10 @@ fn ollama_requires_downloads(path: &str) -> bool {
 /// level permission on top of the blanket `process_control` gate.
 fn comfy_extra_permission(path: &str) -> Option<&'static str> {
     if path.starts_with("/upload") {
-        return Some("filesystem")
+        return Some("filesystem");
     }
     if path.starts_with("/customnode") || path.starts_with("/manager") {
-        return Some("downloads")
+        return Some("downloads");
     }
     None
 }
@@ -823,10 +968,7 @@ fn forbidden(reason: &str) -> Response {
 }
 
 /// Proxy requests to Ollama (localhost:11434)
-async fn proxy_ollama(
-    AxumState(state): AxumState<RemoteState>,
-    req: Request,
-) -> Response {
+async fn proxy_ollama(AxumState(state): AxumState<RemoteState>, req: Request) -> Response {
     let path = req.uri().path().to_string();
 
     // Enforce the `downloads` permission for any endpoint that writes model
@@ -835,12 +977,20 @@ async fn proxy_ollama(
     if ollama_requires_downloads(&path) {
         let perms = state.permissions.lock().await;
         if !perms.downloads {
-            println!("[Remote] BLOCKED (downloads disabled): {} {}", req.method(), path);
+            println!(
+                "[Remote] BLOCKED (downloads disabled): {} {}",
+                req.method(),
+                path
+            );
             return forbidden("Downloads permission disabled for remote clients");
         }
     }
 
-    let query = req.uri().query().map(|q| format!("?{}", q)).unwrap_or_default();
+    let query = req
+        .uri()
+        .query()
+        .map(|q| format!("?{}", q))
+        .unwrap_or_default();
     // Route to the configured Ollama base URL. For the common localhost case
     // we rewrite "localhost" → "127.0.0.1" because reqwest inside the Tauri
     // subprocess fails on localhost resolution (known proxy_localhost bug).
@@ -858,18 +1008,23 @@ async fn proxy_ollama(
 /// Proxy requests to ComfyUI (localhost:comfy_port). Remote access to the
 /// ComfyUI backend is gated by `process_control` as the master switch, and
 /// upload/install routes layer on `filesystem` / `downloads`.
-async fn proxy_comfyui(
-    AxumState(state): AxumState<RemoteState>,
-    req: Request,
-) -> Response {
-    let stripped = req.uri().path().strip_prefix("/comfyui").unwrap_or(req.uri().path());
+async fn proxy_comfyui(AxumState(state): AxumState<RemoteState>, req: Request) -> Response {
+    let stripped = req
+        .uri()
+        .path()
+        .strip_prefix("/comfyui")
+        .unwrap_or(req.uri().path());
     let stripped_owned = stripped.to_string();
 
     // Baseline: accessing ComfyUI at all requires process_control
     {
         let perms = state.permissions.lock().await;
         if !perms.process_control {
-            println!("[Remote] BLOCKED (process_control disabled): {} {}", req.method(), stripped_owned);
+            println!(
+                "[Remote] BLOCKED (process_control disabled): {} {}",
+                req.method(),
+                stripped_owned
+            );
             return forbidden("ComfyUI remote access disabled (enable Process Control)");
         }
         if let Some(extra) = comfy_extra_permission(&stripped_owned) {
@@ -879,14 +1034,26 @@ async fn proxy_comfyui(
                 _ => true,
             };
             if !allowed {
-                println!("[Remote] BLOCKED ({} disabled): {} {}", extra, req.method(), stripped_owned);
+                println!(
+                    "[Remote] BLOCKED ({} disabled): {} {}",
+                    extra,
+                    req.method(),
+                    stripped_owned
+                );
                 return forbidden(&format!("{} permission disabled for remote clients", extra));
             }
         }
     }
 
-    let query = req.uri().query().map(|q| format!("?{}", q)).unwrap_or_default();
-    let target = format!("http://{}:{}{}{}", state.comfy_host, state.comfy_port, stripped_owned, query);
+    let query = req
+        .uri()
+        .query()
+        .map(|q| format!("?{}", q))
+        .unwrap_or_default();
+    let target = format!(
+        "http://{}:{}{}{}",
+        state.comfy_host, state.comfy_port, stripped_owned, query
+    );
     proxy_to_target(&target, req).await
 }
 
@@ -896,9 +1063,16 @@ async fn proxy_to_target(target: &str, req: Request) -> Response {
 
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(600))
-        .build() {
+        .build()
+    {
         Ok(c) => c,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Client init: {}", e)).into_response(),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Client init: {}", e),
+            )
+                .into_response()
+        }
     };
 
     let mut builder = match method {
@@ -923,7 +1097,8 @@ async fn proxy_to_target(target: &str, req: Request) -> Response {
 
     match builder.send().await {
         Ok(resp) => {
-            let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+            let status =
+                StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
             let resp_ct = resp.headers().get(header::CONTENT_TYPE).cloned();
             match resp.bytes().await {
                 Ok(bytes) => {
@@ -931,9 +1106,12 @@ async fn proxy_to_target(target: &str, req: Request) -> Response {
                     if let Some(ct) = resp_ct {
                         response = response.header(header::CONTENT_TYPE, ct);
                     }
-                    response.body(Body::from(bytes.to_vec())).unwrap_or_else(|_| {
-                        (StatusCode::INTERNAL_SERVER_ERROR, "Response build error").into_response()
-                    })
+                    response
+                        .body(Body::from(bytes.to_vec()))
+                        .unwrap_or_else(|_| {
+                            (StatusCode::INTERNAL_SERVER_ERROR, "Response build error")
+                                .into_response()
+                        })
                 }
                 Err(e) => (StatusCode::BAD_GATEWAY, format!("Read error: {}", e)).into_response(),
             }
@@ -976,13 +1154,23 @@ async fn proxy_comfyui_ws(
         let client_to_upstream = tokio::spawn(async move {
             while let Some(Ok(msg)) = client_read.next().await {
                 let tung_msg = match msg {
-                    axum::extract::ws::Message::Text(t) => tokio_tungstenite::tungstenite::Message::Text(t.to_string().into()),
-                    axum::extract::ws::Message::Binary(b) => tokio_tungstenite::tungstenite::Message::Binary(b),
-                    axum::extract::ws::Message::Ping(p) => tokio_tungstenite::tungstenite::Message::Ping(p),
-                    axum::extract::ws::Message::Pong(p) => tokio_tungstenite::tungstenite::Message::Pong(p),
+                    axum::extract::ws::Message::Text(t) => {
+                        tokio_tungstenite::tungstenite::Message::Text(t.to_string().into())
+                    }
+                    axum::extract::ws::Message::Binary(b) => {
+                        tokio_tungstenite::tungstenite::Message::Binary(b)
+                    }
+                    axum::extract::ws::Message::Ping(p) => {
+                        tokio_tungstenite::tungstenite::Message::Ping(p)
+                    }
+                    axum::extract::ws::Message::Pong(p) => {
+                        tokio_tungstenite::tungstenite::Message::Pong(p)
+                    }
                     axum::extract::ws::Message::Close(_) => return,
                 };
-                if upstream_write.send(tung_msg).await.is_err() { return; }
+                if upstream_write.send(tung_msg).await.is_err() {
+                    return;
+                }
             }
         });
 
@@ -990,14 +1178,24 @@ async fn proxy_comfyui_ws(
         let upstream_to_client = tokio::spawn(async move {
             while let Some(Ok(msg)) = upstream_read.next().await {
                 let axum_msg = match msg {
-                    tokio_tungstenite::tungstenite::Message::Text(t) => axum::extract::ws::Message::Text(t.to_string().into()),
-                    tokio_tungstenite::tungstenite::Message::Binary(b) => axum::extract::ws::Message::Binary(b),
-                    tokio_tungstenite::tungstenite::Message::Ping(p) => axum::extract::ws::Message::Ping(p),
-                    tokio_tungstenite::tungstenite::Message::Pong(p) => axum::extract::ws::Message::Pong(p),
+                    tokio_tungstenite::tungstenite::Message::Text(t) => {
+                        axum::extract::ws::Message::Text(t.to_string().into())
+                    }
+                    tokio_tungstenite::tungstenite::Message::Binary(b) => {
+                        axum::extract::ws::Message::Binary(b)
+                    }
+                    tokio_tungstenite::tungstenite::Message::Ping(p) => {
+                        axum::extract::ws::Message::Ping(p)
+                    }
+                    tokio_tungstenite::tungstenite::Message::Pong(p) => {
+                        axum::extract::ws::Message::Pong(p)
+                    }
                     tokio_tungstenite::tungstenite::Message::Close(_) => return,
                     _ => continue,
                 };
-                if client_write.send(axum_msg).await.is_err() { return; }
+                if client_write.send(axum_msg).await.is_err() {
+                    return;
+                }
             }
         });
 
@@ -3785,15 +3983,24 @@ async fn handle_qr(AxumState(state): AxumState<RemoteState>) -> Json<QrResponse>
     // image if the QR encoder rejects the URL.
     let qr = match qrcode::QrCode::new(url.as_bytes()) {
         Ok(q) => q,
-        Err(_) => return Json(QrResponse { qr_png_base64: String::new(), url, passcode: String::new() }),
+        Err(_) => {
+            return Json(QrResponse {
+                qr_png_base64: String::new(),
+                url,
+                passcode: String::new(),
+            })
+        }
     };
-    let qr_image = qr.render::<image::Luma<u8>>()
+    let qr_image = qr
+        .render::<image::Luma<u8>>()
         .quiet_zone(true)
         .min_dimensions(256, 256)
         .build();
     let mut png_bytes: Vec<u8> = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut png_bytes);
-    image::DynamicImage::ImageLuma8(qr_image).write_to(&mut cursor, image::ImageFormat::Png).unwrap_or(());
+    image::DynamicImage::ImageLuma8(qr_image)
+        .write_to(&mut cursor, image::ImageFormat::Png)
+        .unwrap_or(());
 
     let qr_base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png_bytes);
 
@@ -3839,7 +4046,9 @@ async fn handle_config(AxumState(state): AxumState<RemoteState>) -> Json<serde_j
 
 // ─── Permissions ───
 
-async fn handle_get_permissions(AxumState(state): AxumState<RemoteState>) -> Json<RemotePermissions> {
+async fn handle_get_permissions(
+    AxumState(state): AxumState<RemoteState>,
+) -> Json<RemotePermissions> {
     let perms = state.permissions.lock().await;
     Json(perms.clone())
 }
@@ -3849,7 +4058,10 @@ async fn handle_get_permissions(AxumState(state): AxumState<RemoteState>) -> Jso
 /// desktop `set_remote_permissions` command may grant it — so an authenticated
 /// client can't `POST {"shell":true}` and self-escalate to arbitrary command
 /// execution, which would defeat the desktop's OFF-by-default toggle.
-fn merge_remote_permissions(current: &RemotePermissions, body: RemotePermissions) -> RemotePermissions {
+fn merge_remote_permissions(
+    current: &RemotePermissions,
+    body: RemotePermissions,
+) -> RemotePermissions {
     RemotePermissions {
         filesystem: body.filesystem,
         downloads: body.downloads,
@@ -3946,19 +4158,36 @@ fn ensure_lan_firewall_rule(port: u16) {
     // name and no uninstall path removes it, so clear it here best-effort.
     let legacy = format!("Locally Uncensored Remote {}", port);
     let _ = Command::new("netsh")
-        .args(["advfirewall", "firewall", "delete", "rule", &format!("name={}", legacy)])
+        .args([
+            "advfirewall",
+            "firewall",
+            "delete",
+            "rule",
+            &format!("name={}", legacy),
+        ])
         .creation_flags(CREATE_NO_WINDOW)
         .output();
     // Idempotent: drop any prior rule for this name, then add a fresh inbound allow.
     let _ = Command::new("netsh")
-        .args(["advfirewall", "firewall", "delete", "rule", &format!("name={}", name)])
+        .args([
+            "advfirewall",
+            "firewall",
+            "delete",
+            "rule",
+            &format!("name={}", name),
+        ])
         .creation_flags(CREATE_NO_WINDOW)
         .output();
     let _ = Command::new("netsh")
         .args([
-            "advfirewall", "firewall", "add", "rule",
+            "advfirewall",
+            "firewall",
+            "add",
+            "rule",
             &format!("name={}", name),
-            "dir=in", "action=allow", "protocol=TCP",
+            "dir=in",
+            "action=allow",
+            "protocol=TCP",
             &format!("localport={}", port),
             "profile=private,domain",
         ])
@@ -3977,7 +4206,19 @@ pub async fn start_remote_server(
     system_prompt: Option<String>,
 ) -> Result<serde_json::Value, String> {
     // Clone Arcs from std::sync::Mutex, then drop it before any .await
-    let (jwt_secret_arc, passcode_arc, permissions_arc, devices_arc, tunnel_url_arc, dispatched_model_arc, dispatched_system_prompt_arc, port, comfy_port, comfy_host, ollama_base) = {
+    let (
+        jwt_secret_arc,
+        passcode_arc,
+        permissions_arc,
+        devices_arc,
+        tunnel_url_arc,
+        dispatched_model_arc,
+        dispatched_system_prompt_arc,
+        port,
+        comfy_port,
+        comfy_host,
+        ollama_base,
+    ) = {
         let remote = state.remote.lock().map_err(|e| e.to_string())?;
         if remote.handle.is_some() {
             return Err("Remote server already running".into());
@@ -3986,10 +4227,16 @@ pub async fn start_remote_server(
         // unwrap on a poisoned mutex would terminate the entire app. Treat
         // a missing comfy_port as a non-fatal "no comfy yet" (port 0).
         let comfy_port = state.comfy_port.lock().map(|g| *g).unwrap_or(0);
-        let comfy_host = state.comfy_host.lock().map(|g| g.clone()).unwrap_or_else(|_| "localhost".to_string());
+        let comfy_host = state
+            .comfy_host
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|_| "localhost".to_string());
         // Issue #31: snapshot the current Ollama base URL so the mobile proxy
         // forwards to whatever the desktop currently targets.
-        let ollama_base = state.ollama_base.lock()
+        let ollama_base = state
+            .ollama_base
+            .lock()
             .map(|g| g.clone())
             .unwrap_or_else(|_| "http://localhost:11434".to_string());
 
@@ -4016,7 +4263,10 @@ pub async fn start_remote_server(
         use rand::RngCore;
         let mut bytes = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut bytes);
-        bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+        bytes
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>()
     };
     let now = chrono_now_secs();
 
@@ -4075,11 +4325,13 @@ pub async fn start_remote_server(
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("[Remote] Server starting on {}", addr);
     info!(port = port, "remote server connect");
-    let listener = build_reusable_listener(addr)
-        .map_err(|e| {
-            error!(error = %e, port = port, "remote server bind failed");
-            format!("Could not bind {}: {}. Another instance may be running — try Stop first.", addr, e)
-        })?;
+    let listener = build_reusable_listener(addr).map_err(|e| {
+        error!(error = %e, port = port, "remote server bind failed");
+        format!(
+            "Could not bind {}: {}. Another instance may be running — try Stop first.",
+            addr, e
+        )
+    })?;
 
     // Best-effort: open the LAN port in Windows Firewall so the phone can reach
     // us (see fn docs). Non-fatal — needs admin, so it only takes effect for
@@ -4095,7 +4347,9 @@ pub async fn start_remote_server(
         if let Err(e) = axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
-        ).await {
+        )
+        .await
+        {
             eprintln!("[Remote] axum::serve exited with error: {}", e);
             error!(error = %e, "remote axum serve exited with error");
         }
@@ -4123,7 +4377,8 @@ pub async fn start_remote_server(
         .build()
     {
         let probe = format!("http://127.0.0.1:{}/remote-api/status", port);
-        for _ in 0..25 { // ~25 × 200 ms ≈ 5 s readiness budget
+        for _ in 0..25 {
+            // ~25 × 200 ms ≈ 5 s readiness budget
             match client.get(&probe).send().await {
                 Ok(resp) if resp.status().is_success() => break,
                 _ => tokio::time::sleep(std::time::Duration::from_millis(200)).await,
@@ -4171,7 +4426,11 @@ pub async fn stop_remote_server(
 ) -> Result<(), String> {
     let (handle, tunnel_pid, tunnel_url_arc) = {
         let mut remote = state.remote.lock().map_err(|e| e.to_string())?;
-        (remote.handle.take(), remote.tunnel_pid.take(), remote.tunnel_url.clone())
+        (
+            remote.handle.take(),
+            remote.tunnel_pid.take(),
+            remote.tunnel_url.clone(),
+        )
     };
 
     // Stop tunnel if running
@@ -4185,7 +4444,9 @@ pub async fn stop_remote_server(
         }
         #[cfg(not(windows))]
         {
-            let _ = std::process::Command::new("kill").arg(pid.to_string()).output();
+            let _ = std::process::Command::new("kill")
+                .arg(pid.to_string())
+                .output();
         }
         println!("[Tunnel] Stopped");
     }
@@ -4283,7 +4544,12 @@ pub async fn remote_qr_code(
 ) -> Result<serde_json::Value, String> {
     let (running, port, passcode_arc, tunnel_url_arc) = {
         let remote = state.remote.lock().map_err(|e| e.to_string())?;
-        (remote.handle.is_some(), remote.port, remote.passcode.clone(), remote.tunnel_url.clone())
+        (
+            remote.handle.is_some(),
+            remote.port,
+            remote.passcode.clone(),
+            remote.tunnel_url.clone(),
+        )
     };
 
     if !running {
@@ -4303,14 +4569,16 @@ pub async fn remote_qr_code(
     drop(tunnel_url);
 
     let qr = qrcode::QrCode::new(url.as_bytes()).map_err(|e| e.to_string())?;
-    let qr_image = qr.render::<image::Luma<u8>>()
+    let qr_image = qr
+        .render::<image::Luma<u8>>()
         .quiet_zone(true)
         .min_dimensions(256, 256)
         .build();
 
     let mut png_bytes: Vec<u8> = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut png_bytes);
-    image::DynamicImage::ImageLuma8(qr_image).write_to(&mut cursor, image::ImageFormat::Png)
+    image::DynamicImage::ImageLuma8(qr_image)
+        .write_to(&mut cursor, image::ImageFormat::Png)
         .map_err(|e| e.to_string())?;
 
     let qr_base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png_bytes);
@@ -4374,7 +4642,11 @@ fn get_cloudflared_path() -> std::path::PathBuf {
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("locally-uncensored")
         .join("bin");
-    let exe_name = if cfg!(windows) { "cloudflared.exe" } else { "cloudflared" };
+    let exe_name = if cfg!(windows) {
+        "cloudflared.exe"
+    } else {
+        "cloudflared"
+    };
     dir.join(exe_name)
 }
 
@@ -4400,7 +4672,9 @@ pub async fn start_tunnel(
     // tunnel attempt 500'd). Re-pull the latest when the cached binary is more
     // than 30 days old so the tunnel self-heals without the user ever knowing
     // cloudflared exists.
-    let cf_stale = cf_path.metadata().ok()
+    let cf_stale = cf_path
+        .metadata()
+        .ok()
         .and_then(|m| m.modified().ok())
         .and_then(|t| t.elapsed().ok())
         .map(|age| age > std::time::Duration::from_secs(30 * 24 * 60 * 60))
@@ -4427,7 +4701,11 @@ pub async fn start_tunnel(
             .build()
             .map_err(|e| e.to_string())?;
 
-        let resp = client.get(download_url).send().await.map_err(|e| format!("Download failed: {}", e))?;
+        let resp = client
+            .get(download_url)
+            .send()
+            .await
+            .map_err(|e| format!("Download failed: {}", e))?;
         if !resp.status().is_success() {
             return Err(format!("Download HTTP {}", resp.status()));
         }
@@ -4459,7 +4737,9 @@ pub async fn start_tunnel(
             bytes.starts_with(&[0x1f, 0x8b]) // gzip (.tgz for darwin)
         };
         if !magic_ok {
-            return Err("cloudflared download failed integrity check (unexpected file header)".into());
+            return Err(
+                "cloudflared download failed integrity check (unexpected file header)".into(),
+            );
         }
 
         std::fs::write(&cf_path, &bytes).map_err(|e| format!("write: {}", e))?;
@@ -4483,11 +4763,10 @@ pub async fn start_tunnel(
         .stderr(std::process::Stdio::piped());
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
-    let child = cmd.spawn()
-        .map_err(|e| {
-            error!(error = %e, "cloudflared tunnel spawn failed");
-            format!("Failed to start cloudflared: {}", e)
-        })?;
+    let child = cmd.spawn().map_err(|e| {
+        error!(error = %e, "cloudflared tunnel spawn failed");
+        format!("Failed to start cloudflared: {}", e)
+    })?;
 
     let pid = child.id();
     info!(pid = pid, port = port, "tunnel started");
@@ -4495,7 +4774,10 @@ pub async fn start_tunnel(
         Some(s) => s,
         None => return Err("cloudflared had no stderr handle".into()),
     };
-    println!("[Tunnel] cloudflared started (PID {}), tunneling localhost:{}", pid, port);
+    println!(
+        "[Tunnel] cloudflared started (PID {}), tunneling localhost:{}",
+        pid, port
+    );
 
     let captured_url = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
     let url_clone = captured_url.clone();
@@ -4509,11 +4791,12 @@ pub async fn start_tunnel(
             // cloudflared prints: "... https://xxx.trycloudflare.com ..."
             if let Some(start) = line.find("https://") {
                 let url_part = &line[start..];
-                let candidate = if let Some(end) = url_part.find(|c: char| c.is_whitespace() || c == '|') {
-                    &url_part[..end]
-                } else {
-                    url_part.trim()
-                };
+                let candidate =
+                    if let Some(end) = url_part.find(|c: char| c.is_whitespace() || c == '|') {
+                        &url_part[..end]
+                    } else {
+                        url_part.trim()
+                    };
                 if candidate.contains(".trycloudflare.com") {
                     if let Ok(mut g) = url_clone.lock() {
                         *g = candidate.to_string();
@@ -4530,7 +4813,9 @@ pub async fn start_tunnel(
         if let Ok(g) = captured_url.lock() {
             url = g.clone();
         }
-        if !url.is_empty() { break; }
+        if !url.is_empty() {
+            break;
+        }
     }
 
     // #aldrich (Discord 2026-06-13, "Error HTTP:503" on the phone): a
@@ -4547,7 +4832,8 @@ pub async fn start_tunnel(
             .build()
         {
             let probe = format!("{}/mobile", url);
-            for _ in 0..20 { // ~20 × 600 ms ≈ 12 s readiness budget
+            for _ in 0..20 {
+                // ~20 × 600 ms ≈ 12 s readiness budget
                 match client.get(&probe).send().await {
                     Ok(resp) if resp.status().is_success() => break,
                     _ => tokio::time::sleep(std::time::Duration::from_millis(600)).await,
@@ -4565,7 +4851,11 @@ pub async fn start_tunnel(
     // Store tunnel URL in shared state (so axum handlers see it)
     {
         let mut turl = tunnel_url_arc.lock().await;
-        *turl = if url.is_empty() { None } else { Some(url.clone()) };
+        *turl = if url.is_empty() {
+            None
+        } else {
+            Some(url.clone())
+        };
     }
 
     if url.is_empty() {
@@ -4588,9 +4878,7 @@ pub async fn start_tunnel(
 }
 
 #[tauri::command]
-pub async fn stop_tunnel(
-    state: tauri::State<'_, crate::state::AppState>,
-) -> Result<(), String> {
+pub async fn stop_tunnel(state: tauri::State<'_, crate::state::AppState>) -> Result<(), String> {
     let (pid, tunnel_url_arc) = {
         let mut remote = state.remote.lock().map_err(|e| e.to_string())?;
         (remote.tunnel_pid.take(), remote.tunnel_url.clone())
@@ -4606,7 +4894,9 @@ pub async fn stop_tunnel(
         }
         #[cfg(not(windows))]
         {
-            let _ = std::process::Command::new("kill").arg(pid.to_string()).output();
+            let _ = std::process::Command::new("kill")
+                .arg(pid.to_string())
+                .output();
         }
         println!("[Tunnel] Stopped (PID {})", pid);
     }
@@ -4667,8 +4957,7 @@ fn build_router(state: RemoteState) -> Router {
         .route("/ws", get(proxy_comfyui_ws));
 
     // Mobile landing page
-    let mobile = Router::new()
-        .route("/mobile", get(mobile_landing));
+    let mobile = Router::new().route("/mobile", get(mobile_landing));
 
     // Combine all routes. The remote server does NOT expose the desktop
     // React SPA — `mobile_landing` is self-contained, and serving the full
@@ -4682,9 +4971,12 @@ fn build_router(state: RemoteState) -> Router {
         .route("/LU-monogram-white.png", get(mobile_monogram))
         .fallback(redirect_to_mobile);
 
-    app.layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
-        .layer(cors)
-        .with_state(state)
+    app.layer(middleware::from_fn_with_state(
+        state.clone(),
+        auth_middleware,
+    ))
+    .layer(cors)
+    .with_state(state)
 }
 
 async fn redirect_to_mobile() -> Response {
@@ -4711,7 +5003,7 @@ async fn mobile_monogram() -> Response {
 #[cfg(test)]
 mod jwt_refresh_tests {
     use super::{
-        generate_jwt, validate_jwt, should_refresh_jwt, should_slide_session, JWT_TTL_SECS,
+        generate_jwt, should_refresh_jwt, should_slide_session, validate_jwt, JWT_TTL_SECS,
         MAX_SESSION_SECS,
     };
 
@@ -4748,7 +5040,11 @@ mod jwt_refresh_tests {
         assert!(!should_slide_session(iat, exp_late, now_late));
         // Exactly at the cap boundary → no slide.
         let now_cap = iat + MAX_SESSION_SECS;
-        assert!(!should_slide_session(iat, now_cap + JWT_TTL_SECS / 2 - 1, now_cap));
+        assert!(!should_slide_session(
+            iat,
+            now_cap + JWT_TTL_SECS / 2 - 1,
+            now_cap
+        ));
     }
 
     #[test]
@@ -4784,7 +5080,11 @@ mod remote_path_tests {
         let state = AppState::new();
         let resolved = resolve_remote_path("client/public", Some("__remote__"), &state).unwrap();
         let s = resolved.replace('\\', "/");
-        assert!(s.contains("agent-workspace/__remote__/client/public"), "got: {}", s);
+        assert!(
+            s.contains("agent-workspace/__remote__/client/public"),
+            "got: {}",
+            s
+        );
     }
 
     /// Override set → relative paths land inside it.
@@ -4801,7 +5101,8 @@ mod remote_path_tests {
             .unwrap()
             .insert("__remote__".to_string(), target.clone());
 
-        let resolved = resolve_remote_path("client/public/index.html", Some("__remote__"), &state).unwrap();
+        let resolved =
+            resolve_remote_path("client/public/index.html", Some("__remote__"), &state).unwrap();
         let actual = resolved.replace('\\', "/");
         let expected = target
             .join("client")
@@ -4830,7 +5131,11 @@ mod remote_path_tests {
         assert!(resolve_remote_path(&inside.to_string_lossy(), Some("__remote__"), &state).is_ok());
 
         // Outside the workspace → rejected.
-        let abs = if cfg!(windows) { "C:/Windows/System32/foo.txt" } else { "/etc/passwd" };
+        let abs = if cfg!(windows) {
+            "C:/Windows/System32/foo.txt"
+        } else {
+            "/etc/passwd"
+        };
         assert!(resolve_remote_path(abs, Some("__remote__"), &state).is_err());
 
         // `..` climbing out → rejected.
@@ -4849,7 +5154,8 @@ mod remote_path_tests {
     fn remote_permissions_deserialize_without_shell_defaults_false() {
         // Older mobile/client payloads omit `shell`; serde default must be false.
         let p: super::RemotePermissions =
-            serde_json::from_str(r#"{"filesystem":true,"downloads":true,"process_control":true}"#).unwrap();
+            serde_json::from_str(r#"{"filesystem":true,"downloads":true,"process_control":true}"#)
+                .unwrap();
         assert!(!p.shell);
     }
 
@@ -4857,21 +5163,50 @@ mod remote_path_tests {
     fn remote_cannot_raise_shell_via_permissions_endpoint() {
         // SECURITY: an authenticated client POSTing {"shell":true} must NOT be
         // able to self-grant the RCE-class shell permission.
-        let current = super::RemotePermissions { filesystem: false, downloads: false, process_control: false, shell: false };
-        let body = super::RemotePermissions { filesystem: true, downloads: true, process_control: true, shell: true };
+        let current = super::RemotePermissions {
+            filesystem: false,
+            downloads: false,
+            process_control: false,
+            shell: false,
+        };
+        let body = super::RemotePermissions {
+            filesystem: true,
+            downloads: true,
+            process_control: true,
+            shell: true,
+        };
         let merged = super::merge_remote_permissions(&current, body);
-        assert!(merged.filesystem && merged.downloads && merged.process_control, "non-RCE perms apply");
-        assert!(!merged.shell, "remote bridge must NOT be able to grant shell");
+        assert!(
+            merged.filesystem && merged.downloads && merged.process_control,
+            "non-RCE perms apply"
+        );
+        assert!(
+            !merged.shell,
+            "remote bridge must NOT be able to grant shell"
+        );
     }
 
     #[test]
     fn remote_merge_preserves_desktop_set_shell() {
         // Desktop enabled shell; a later remote update that omits/clears it must
         // NOT silently revoke the desktop's choice (shell is desktop-controlled).
-        let current = super::RemotePermissions { filesystem: false, downloads: false, process_control: false, shell: true };
-        let body = super::RemotePermissions { filesystem: true, downloads: false, process_control: false, shell: false };
+        let current = super::RemotePermissions {
+            filesystem: false,
+            downloads: false,
+            process_control: false,
+            shell: true,
+        };
+        let body = super::RemotePermissions {
+            filesystem: true,
+            downloads: false,
+            process_control: false,
+            shell: false,
+        };
         let merged = super::merge_remote_permissions(&current, body);
-        assert!(merged.shell, "desktop-set shell must survive a remote update");
+        assert!(
+            merged.shell,
+            "desktop-set shell must survive a remote update"
+        );
         assert!(merged.filesystem, "non-RCE perms still apply");
     }
 }

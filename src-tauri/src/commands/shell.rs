@@ -19,9 +19,19 @@ fn workspace_cwd(chat_id: Option<&str>) -> PathBuf {
     let safe: String = id
         .chars()
         .take(64)
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
-    let slug = if safe.is_empty() { "default".to_string() } else { safe };
+    let slug = if safe.is_empty() {
+        "default".to_string()
+    } else {
+        safe
+    };
     dirs::home_dir()
         .unwrap_or_default()
         .join("agent-workspace")
@@ -68,7 +78,10 @@ fn shell_execute_sync(
 
     // Build shell command
     if cfg!(target_os = "windows") && shell_bin.to_lowercase().contains("powershell") {
-        cmd.arg("-NoProfile").arg("-NonInteractive").arg("-Command").arg(&command);
+        cmd.arg("-NoProfile")
+            .arg("-NonInteractive")
+            .arg("-Command")
+            .arg(&command);
     } else if cfg!(target_os = "windows") && shell_bin.to_lowercase().contains("cmd") {
         cmd.arg("/C").arg(&command);
     } else {
@@ -88,7 +101,11 @@ fn shell_execute_sync(
     // ~/Documents (David 2026-06-04). Mirrors the file tools' path resolution.
     let workdir: PathBuf = match cwd.as_ref().map(|d| Path::new(d)) {
         Some(p) if p.is_dir() => p.to_path_buf(),
-        _ => match working_directory.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        _ => match working_directory
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             // Folder workspace (the user's repo, from chatCtx.workingDirectory)
             // wins over the per-chat sandbox for relative commands (#62).
             Some(wd) => PathBuf::from(wd),

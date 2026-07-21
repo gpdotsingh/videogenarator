@@ -21,14 +21,16 @@ async fn try_searxng(query: &str, count: usize) -> Result<Vec<SearchResult>, Str
         .build()
         .map_err(|e| e.to_string())?;
 
-    let resp = client.get(&url)
+    let resp = client
+        .get(&url)
         .send()
         .await
         .map_err(|e| format!("SearXNG: {}", e))?;
 
     let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
 
-    let results = json.get("results")
+    let results = json
+        .get("results")
         .and_then(|r| r.as_array())
         .map(|arr| {
             arr.iter()
@@ -37,7 +39,11 @@ async fn try_searxng(query: &str, count: usize) -> Result<Vec<SearchResult>, Str
                     Some(SearchResult {
                         title: r.get("title")?.as_str()?.to_string(),
                         url: r.get("url")?.as_str()?.to_string(),
-                        snippet: r.get("content").and_then(|c| c.as_str()).unwrap_or("").to_string(),
+                        snippet: r
+                            .get("content")
+                            .and_then(|c| c.as_str())
+                            .unwrap_or("")
+                            .to_string(),
                     })
                 })
                 .collect()
@@ -54,7 +60,8 @@ async fn try_ddg(query: &str, count: usize) -> Result<Vec<SearchResult>, String>
         .build()
         .map_err(|e| e.to_string())?;
 
-    let resp = client.post("https://html.duckduckgo.com/html/")
+    let resp = client
+        .post("https://html.duckduckgo.com/html/")
         .form(&[("q", query)])
         .send()
         .await
@@ -65,12 +72,15 @@ async fn try_ddg(query: &str, count: usize) -> Result<Vec<SearchResult>, String>
     // Parse results — capture full inner HTML then strip tags
     let title_re = regex::Regex::new(r#"class="result__a"[^>]*>(.*?)</a>"#).unwrap();
     let url_re = regex::Regex::new(r#"class="result__url"[^>]*?href="([^"]*)"#).unwrap();
-    let snippet_re = regex::Regex::new(r#"class="result__snippet"[^>]*>([\s\S]*?)</(?:td|div|a\s)"#).unwrap();
+    let snippet_re =
+        regex::Regex::new(r#"class="result__snippet"[^>]*>([\s\S]*?)</(?:td|div|a\s)"#).unwrap();
 
-    let titles: Vec<String> = title_re.captures_iter(&html)
+    let titles: Vec<String> = title_re
+        .captures_iter(&html)
         .map(|c| html_decode(&strip_html(&c[1])))
         .collect();
-    let urls: Vec<String> = url_re.captures_iter(&html)
+    let urls: Vec<String> = url_re
+        .captures_iter(&html)
         .map(|c| {
             let raw = &c[1];
             // DDG wraps URLs — extract actual URL from redirect
@@ -84,7 +94,8 @@ async fn try_ddg(query: &str, count: usize) -> Result<Vec<SearchResult>, String>
             }
         })
         .collect();
-    let snippets: Vec<String> = snippet_re.captures_iter(&html)
+    let snippets: Vec<String> = snippet_re
+        .captures_iter(&html)
         .map(|c| html_decode(&strip_html(&c[1])).trim().to_string())
         .collect();
 
@@ -155,7 +166,10 @@ async fn try_brave(query: &str, count: usize, api_key: &str) -> Result<Vec<Searc
         .map_err(|e| format!("Brave: {}", e))?;
     let status = resp.status();
     if !status.is_success() {
-        return Err(format!("Brave: HTTP {} (check the API key)", status.as_u16()));
+        return Err(format!(
+            "Brave: HTTP {} (check the API key)",
+            status.as_u16()
+        ));
     }
     let json: serde_json::Value = resp.json().await.map_err(|e| format!("Brave: {}", e))?;
     let results = parse_brave_results(&json, count);
@@ -209,7 +223,10 @@ async fn try_tavily(query: &str, count: usize, api_key: &str) -> Result<Vec<Sear
         .map_err(|e| format!("Tavily: {}", e))?;
     let status = resp.status();
     if !status.is_success() {
-        return Err(format!("Tavily: HTTP {} (check the API key)", status.as_u16()));
+        return Err(format!(
+            "Tavily: HTTP {} (check the API key)",
+            status.as_u16()
+        ));
     }
     let json: serde_json::Value = resp.json().await.map_err(|e| format!("Tavily: {}", e))?;
     let results = parse_tavily_results(&json, count);
@@ -232,7 +249,8 @@ async fn try_wikipedia(query: &str, count: usize) -> Result<Vec<SearchResult>, S
 
     let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
 
-    let results: Vec<SearchResult> = json.pointer("/query/search")
+    let results: Vec<SearchResult> = json
+        .pointer("/query/search")
         .and_then(|s| s.as_array())
         .map(|arr| {
             arr.iter()
@@ -240,8 +258,13 @@ async fn try_wikipedia(query: &str, count: usize) -> Result<Vec<SearchResult>, S
                     let title = r.get("title")?.as_str()?;
                     Some(SearchResult {
                         title: title.to_string(),
-                        url: format!("https://en.wikipedia.org/wiki/{}", urlencoding::encode(title)),
-                        snippet: r.get("snippet").and_then(|s| s.as_str())
+                        url: format!(
+                            "https://en.wikipedia.org/wiki/{}",
+                            urlencoding::encode(title)
+                        ),
+                        snippet: r
+                            .get("snippet")
+                            .and_then(|s| s.as_str())
                             .map(|s| html_decode(&strip_html(s)))
                             .unwrap_or_default(),
                     })
@@ -259,13 +282,13 @@ async fn try_wikipedia(query: &str, count: usize) -> Result<Vec<SearchResult>, S
 
 fn html_decode(s: &str) -> String {
     s.replace("&amp;", "&")
-     .replace("&lt;", "<")
-     .replace("&gt;", ">")
-     .replace("&quot;", "\"")
-     .replace("&#39;", "'")
-     .replace("&#x27;", "'")
-     .replace("&apos;", "'")
-     .replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&#x27;", "'")
+        .replace("&apos;", "'")
+        .replace("&nbsp;", " ")
 }
 
 fn strip_html(s: &str) -> String {
@@ -304,7 +327,9 @@ pub async fn web_search(
                 );
             } else {
                 match try_brave(&query, count, &brave_key).await {
-                    Ok(results) => return Ok(serde_json::json!({"results": results, "provider": "brave"})),
+                    Ok(results) => {
+                        return Ok(serde_json::json!({"results": results, "provider": "brave"}))
+                    }
                     Err(e) => provider_error = Some(e),
                 }
             }
@@ -316,7 +341,9 @@ pub async fn web_search(
                 );
             } else {
                 match try_tavily(&query, count, &tavily_key).await {
-                    Ok(results) => return Ok(serde_json::json!({"results": results, "provider": "tavily"})),
+                    Ok(results) => {
+                        return Ok(serde_json::json!({"results": results, "provider": "tavily"}))
+                    }
                     Err(e) => provider_error = Some(e),
                 }
             }
@@ -348,21 +375,29 @@ pub async fn web_search(
     // Try SearXNG first
     if state.searxng_available.load(Ordering::Relaxed) {
         if let Ok(results) = try_searxng(&query, count).await {
-            return Ok(attach(serde_json::json!({"results": results, "provider": "searxng"})));
+            return Ok(attach(
+                serde_json::json!({"results": results, "provider": "searxng"}),
+            ));
         }
     }
 
     // Fallback to DuckDuckGo
     if let Ok(results) = try_ddg(&query, count).await {
-        return Ok(attach(serde_json::json!({"results": results, "provider": "duckduckgo"})));
+        return Ok(attach(
+            serde_json::json!({"results": results, "provider": "duckduckgo"}),
+        ));
     }
 
     // Fallback to Wikipedia
     if let Ok(results) = try_wikipedia(&query, count).await {
-        return Ok(attach(serde_json::json!({"results": results, "provider": "wikipedia"})));
+        return Ok(attach(
+            serde_json::json!({"results": results, "provider": "wikipedia"}),
+        ));
     }
 
-    Ok(attach(serde_json::json!({"results": [], "error": "All search tiers failed"})))
+    Ok(attach(
+        serde_json::json!({"results": [], "error": "All search tiers failed"}),
+    ))
 }
 
 #[tauri::command]
@@ -372,7 +407,8 @@ pub async fn search_status(state: State<'_, AppState>) -> Result<serde_json::Val
         .build()
         .map_err(|e| e.to_string())?;
 
-    let available = client.get("http://localhost:8888")
+    let available = client
+        .get("http://localhost:8888")
         .send()
         .await
         .map(|r| r.status().is_success())
@@ -392,7 +428,9 @@ pub fn install_searxng(state: State<'_, AppState>) -> Result<serde_json::Value, 
 
     install.status = "installing".to_string();
     install.logs.clear();
-    install.logs.push("Pulling SearXNG Docker image...".to_string());
+    install
+        .logs
+        .push("Pulling SearXNG Docker image...".to_string());
     drop(install);
 
     // Run docker pull + run in background.
@@ -415,9 +453,14 @@ pub fn install_searxng(state: State<'_, AppState>) -> Result<serde_json::Value, 
             Ok(output) if output.status.success() => {
                 let mut run_cmd = std::process::Command::new("docker");
                 run_cmd.args([
-                    "run", "-d", "--name", "searxng",
-                    "-p", "8888:8080",
-                    "-e", "INSTANCE_NAME=locally-uncensored",
+                    "run",
+                    "-d",
+                    "--name",
+                    "searxng",
+                    "-p",
+                    "8888:8080",
+                    "-e",
+                    "INSTANCE_NAME=locally-uncensored",
                     "searxng/searxng",
                 ]);
                 #[cfg(windows)]
@@ -475,7 +518,10 @@ pub async fn web_fetch(url: String) -> Result<serde_json::Value, String> {
 
     let resp = client
         .get(trimmed)
-        .header("Accept", "text/html,text/plain,application/xhtml+xml;q=0.9,*/*;q=0.5")
+        .header(
+            "Accept",
+            "text/html,text/plain,application/xhtml+xml;q=0.9,*/*;q=0.5",
+        )
         .header("Accept-Language", "en,de;q=0.8")
         .send()
         .await
@@ -513,7 +559,10 @@ pub async fn web_fetch(url: String) -> Result<serde_json::Value, String> {
 /// agent real substance instead of just a snippet.
 fn extract_readable_text(body: &str, content_type: &str) -> (String, String) {
     // Not HTML? Treat as plain text.
-    if !content_type.contains("html") && !body.trim_start().to_lowercase().starts_with("<!doctype") && !body.contains("<html") {
+    if !content_type.contains("html")
+        && !body.trim_start().to_lowercase().starts_with("<!doctype")
+        && !body.contains("<html")
+    {
         let text = collapse_whitespace(body);
         return (String::new(), text);
     }
@@ -525,14 +574,31 @@ fn extract_readable_text(body: &str, content_type: &str) -> (String, String) {
 
     // Drop noisy sections entirely
     let mut cleaned = body.to_string();
-    for tag in &["script", "style", "noscript", "svg", "header", "footer", "nav", "aside", "form", "template"] {
+    for tag in &[
+        "script", "style", "noscript", "svg", "header", "footer", "nav", "aside", "form",
+        "template",
+    ] {
         cleaned = strip_block_tag(&cleaned, tag);
     }
 
     // Replace common block-level tags with newlines so paragraph boundaries survive
     for tag in &[
-        "</p>", "</div>", "</li>", "</h1>", "</h2>", "</h3>", "</h4>", "</h5>", "</h6>",
-        "</section>", "</article>", "</blockquote>", "</pre>", "<br>", "<br/>", "<br />",
+        "</p>",
+        "</div>",
+        "</li>",
+        "</h1>",
+        "</h2>",
+        "</h3>",
+        "</h4>",
+        "</h5>",
+        "</h6>",
+        "</section>",
+        "</article>",
+        "</blockquote>",
+        "</pre>",
+        "<br>",
+        "<br/>",
+        "<br />",
     ] {
         cleaned = cleaned.replace(tag, &format!("{}\n", tag));
     }
@@ -548,9 +614,17 @@ fn strip_tags(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut in_tag = false;
     for ch in s.chars() {
-        if ch == '<' { in_tag = true; continue; }
-        if ch == '>' { in_tag = false; continue; }
-        if !in_tag { out.push(ch); }
+        if ch == '<' {
+            in_tag = true;
+            continue;
+        }
+        if ch == '>' {
+            in_tag = false;
+            continue;
+        }
+        if !in_tag {
+            out.push(ch);
+        }
     }
     out
 }
@@ -600,10 +674,15 @@ fn collapse_whitespace(s: &str) -> String {
         if ch == '\n' || ch == '\r' {
             newline_run += 1;
             space_run = false;
-            if newline_run <= 2 { out.push('\n'); }
+            if newline_run <= 2 {
+                out.push('\n');
+            }
         } else if ch == '\t' || ch == ' ' {
             newline_run = 0;
-            if !space_run { out.push(' '); space_run = true; }
+            if !space_run {
+                out.push(' ');
+                space_run = true;
+            }
         } else {
             newline_run = 0;
             space_run = false;

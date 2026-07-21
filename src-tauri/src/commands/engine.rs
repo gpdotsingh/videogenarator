@@ -164,8 +164,7 @@ pub(crate) fn scan_gguf_models(dir: &Path) -> Vec<BundledModel> {
 pub fn builtin_models_dir() -> Result<PathBuf, String> {
     let base = dirs::data_dir().ok_or("Cannot resolve app data directory")?;
     let dir = base.join("Locally Uncensored").join("models");
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| format!("Create built-in models dir: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Create built-in models dir: {e}"))?;
     Ok(dir)
 }
 
@@ -196,7 +195,11 @@ fn resolve_engine_binary(app: &AppHandle) -> Option<PathBuf> {
     // 3. Dev: src-tauri/bin/llama-server-<triple>[.exe]. `tauri dev` runs the
     //    binary from target/debug, so walk up to the manifest dir.
     let triple = host_target_triple();
-    let suffix = if cfg!(target_os = "windows") { ".exe" } else { "" };
+    let suffix = if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    };
     let dev_name = format!("llama-server-{triple}{suffix}");
     let mut dev_candidates: Vec<PathBuf> = Vec::new();
     if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
@@ -332,9 +335,7 @@ pub fn stop_bundled_engine(state: State<'_, AppState>) -> Result<serde_json::Val
 /// health probe. `running` reflects the child handle; `healthy` the HTTP probe
 /// (they diverge briefly during cold load).
 #[tauri::command]
-pub fn bundled_engine_status(
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
+pub fn bundled_engine_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let guard = state.bundled_engine.lock().unwrap();
     match guard.as_ref() {
         Some(engine) => Ok(serde_json::json!({
@@ -377,9 +378,7 @@ pub fn swap_bundled_model(
 /// loaded. Used by the frontend instead of `/v1/models` (which would only
 /// report the single loaded model).
 #[tauri::command]
-pub fn list_bundled_models(
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
+pub fn list_bundled_models(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let dir = builtin_models_dir()?;
     let loaded = state
         .bundled_engine
@@ -510,9 +509,7 @@ pub fn stop_bundled_embed(state: State<'_, AppState>) -> Result<serde_json::Valu
 
 /// Report whether the embeddings server is up, which model, on which port.
 #[tauri::command]
-pub fn bundled_embed_status(
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
+pub fn bundled_embed_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let guard = state.bundled_embed.lock().unwrap();
     match guard.as_ref() {
         Some(embed) => Ok(serde_json::json!({
@@ -537,7 +534,10 @@ fn stop_embed_locked(state: &State<'_, AppState>) -> bool {
     if let Some(mut embed) = guard.take() {
         let _ = embed.child.kill();
         let _ = embed.child.wait();
-        println!("[Engine] Built-in embeddings server stopped (port {})", embed.port);
+        println!(
+            "[Engine] Built-in embeddings server stopped (port {})",
+            embed.port
+        );
         true
     } else {
         false
@@ -554,11 +554,16 @@ mod tests {
         assert_eq!(
             args,
             vec![
-                "-m", "/models/qwen.gguf",
-                "--host", "127.0.0.1",
-                "--port", "8127",
-                "--ctx-size", "8192",
-                "-ngl", "999",
+                "-m",
+                "/models/qwen.gguf",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8127",
+                "--ctx-size",
+                "8192",
+                "-ngl",
+                "999",
             ]
         );
     }
@@ -569,12 +574,17 @@ mod tests {
         assert_eq!(
             args,
             vec![
-                "-m", "/models/nomic-embed.gguf",
-                "--host", "127.0.0.1",
-                "--port", "8128",
+                "-m",
+                "/models/nomic-embed.gguf",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8128",
                 "--embeddings",
-                "--pooling", "mean",
-                "-ngl", "999",
+                "--pooling",
+                "mean",
+                "-ngl",
+                "999",
             ]
         );
         // The whole point of P5: the embed server must NOT carry --ctx-size

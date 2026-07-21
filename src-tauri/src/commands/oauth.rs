@@ -67,7 +67,9 @@ pub async fn oauth_start(state: tauri::State<'_, OauthPending>) -> Result<u16, S
             // with this task. If oauth_wait times out first, tx.send just
             // errs into the void — harmless.
             loop {
-                let Ok((mut stream, _)) = listener.accept().await else { return };
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
                 let mut buf = vec![0u8; 8192];
                 // Short read deadline so an idle preconnect socket can't park
                 // the loop while the real callback waits in the backlog.
@@ -119,11 +121,14 @@ pub async fn oauth_start(state: tauri::State<'_, OauthPending>) -> Result<u16, S
             }
         });
         let id = NEXT_ATTEMPT.fetch_add(1, Ordering::Relaxed);
-        state
-            .0
-            .lock()
-            .unwrap()
-            .insert(port, PendingLogin { id, rx: Some(rx), task });
+        state.0.lock().unwrap().insert(
+            port,
+            PendingLogin {
+                id,
+                rx: Some(rx),
+                task,
+            },
+        );
         return Ok(port);
     }
     Err("no loopback port available (17872-17874) — close the app using them and retry".into())
@@ -150,8 +155,11 @@ pub async fn oauth_wait(
             .ok_or("oauth wait already running on that port")?;
         (pending.id, rx)
     };
-    let result =
-        tokio::time::timeout(std::time::Duration::from_secs(timeout_secs.clamp(10, 900)), rx).await;
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_secs.clamp(10, 900)),
+        rx,
+    )
+    .await;
     // The attempt is over either way — drop the accept task so the listener
     // releases the port (no-op if it already served the callback). Only touch
     // our own attempt: a retry's oauth_start may have drained it and re-armed

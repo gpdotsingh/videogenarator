@@ -70,7 +70,9 @@ pub fn cancel_comfyui_install(state: State<'_, AppState>) -> Result<serde_json::
         // "Cancelling…" indicator even before the spawn loop notices.
         if s.status == "installing" || s.status == "downloading" {
             s.status = "cancelling".to_string();
-            s.logs.push("Cancellation requested — waiting for active subprocess to exit…".to_string());
+            s.logs.push(
+                "Cancellation requested — waiting for active subprocess to exit…".to_string(),
+            );
         }
     }
     Ok(serde_json::json!({"status": "cancelling"}))
@@ -333,7 +335,11 @@ pub fn pip_install_streaming_with_retry_cancellable(
     let mut last_stderr = String::new();
 
     for attempt in 1..=max_attempts {
-        if cancel.as_ref().map(|c| c.load(Ordering::SeqCst)).unwrap_or(false) {
+        if cancel
+            .as_ref()
+            .map(|c| c.load(Ordering::SeqCst))
+            .unwrap_or(false)
+        {
             return Err("cancelled".to_string());
         }
         if attempt > 1 {
@@ -346,7 +352,11 @@ pub fn pip_install_streaming_with_retry_cancellable(
             );
             // Sleep in 1-second chunks so cancel reacts within ~1s.
             for _ in 0..delay_seconds {
-                if cancel.as_ref().map(|c| c.load(Ordering::SeqCst)).unwrap_or(false) {
+                if cancel
+                    .as_ref()
+                    .map(|c| c.load(Ordering::SeqCst))
+                    .unwrap_or(false)
+                {
                     return Err("cancelled".to_string());
                 }
                 std::thread::sleep(std::time::Duration::from_secs(1));
@@ -355,9 +365,7 @@ pub fn pip_install_streaming_with_retry_cancellable(
         }
 
         let mut cmd = Command::new(python_bin);
-        cmd.args(args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(target_os = "windows")]
         cmd.creation_flags(CREATE_NO_WINDOW);
 
@@ -410,7 +418,11 @@ pub fn pip_install_streaming_with_retry_cancellable(
         // Poll for either the child to exit or the cancel flag to flip.
         // try_wait avoids blocking the cancel check; sleep keeps CPU idle.
         let exit_status = loop {
-            if cancel.as_ref().map(|c| c.load(Ordering::SeqCst)).unwrap_or(false) {
+            if cancel
+                .as_ref()
+                .map(|c| c.load(Ordering::SeqCst))
+                .unwrap_or(false)
+            {
                 // Kill the child so pip doesn't keep saturating disk.
                 let _ = child.kill();
                 let _ = child.wait();
@@ -431,10 +443,7 @@ pub fn pip_install_streaming_with_retry_cancellable(
             return Ok(());
         }
 
-        last_stderr = stderr_capture
-            .lock()
-            .map(|s| s.clone())
-            .unwrap_or_default();
+        last_stderr = stderr_capture.lock().map(|s| s.clone()).unwrap_or_default();
 
         if !is_transient_pip_error(&last_stderr) {
             return Err(diagnose_pip_error(&last_stderr));
@@ -460,7 +469,9 @@ pub fn install_comfyui(
 
     install.status = "installing".to_string();
     install.logs.clear();
-    install.logs.push("Starting ComfyUI installation...".to_string());
+    install
+        .logs
+        .push("Starting ComfyUI installation...".to_string());
     drop(install);
 
     info!("comfyui install start");
@@ -604,8 +615,10 @@ pub fn install_comfyui(
                     return;
                 }
                 let mut pull = Command::new("git");
-                pull.args(["pull"]).current_dir(&target_dir)
-                    .stdout(Stdio::piped()).stderr(Stdio::piped());
+                pull.args(["pull"])
+                    .current_dir(&target_dir)
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
                 #[cfg(target_os = "windows")]
                 pull.creation_flags(CREATE_NO_WINDOW);
                 let _ = pull.output();
@@ -673,7 +686,11 @@ pub fn install_comfyui(
         // pick the wheel set accordingly. Falls back to cu121 if the probe
         // fails for any reason — that's the previous behaviour, so we
         // never regress existing setups.
-        let compute_cap_major = if has_nvidia { detect_nvidia_compute_cap_major() } else { None };
+        let compute_cap_major = if has_nvidia {
+            detect_nvidia_compute_cap_major()
+        } else {
+            None
+        };
         let pytorch_index = match compute_cap_major {
             Some(major) if major >= 12 => Some("https://download.pytorch.org/whl/cu128"),
             Some(_) => Some("https://download.pytorch.org/whl/cu121"),
@@ -682,9 +699,13 @@ pub fn install_comfyui(
         };
 
         let gpu_info = match (has_nvidia, compute_cap_major) {
-            (true, Some(major)) if major >= 12 => "NVIDIA Blackwell GPU detected (SM 12.0+) — installing PyTorch cu128",
+            (true, Some(major)) if major >= 12 => {
+                "NVIDIA Blackwell GPU detected (SM 12.0+) — installing PyTorch cu128"
+            }
             (true, Some(_)) => "NVIDIA GPU detected — installing CUDA PyTorch (cu121)",
-            (true, None) => "NVIDIA GPU detected (compute capability probe failed) — falling back to cu121",
+            (true, None) => {
+                "NVIDIA GPU detected (compute capability probe failed) — falling back to cu121"
+            }
             (false, _) => "No NVIDIA GPU — installing CPU PyTorch",
         };
         println!("[Install] {}", gpu_info);
@@ -699,22 +720,39 @@ pub fn install_comfyui(
 
         let torch_args: Vec<&str> = if let Some(index_url) = pytorch_index {
             vec![
-                "-m", "pip", "install",
-                "--progress-bar", "off",
+                "-m",
+                "pip",
+                "install",
+                "--progress-bar",
+                "off",
                 "--no-input",
-                "torch", "torchvision", "torchaudio",
-                "--index-url", index_url,
+                "torch",
+                "torchvision",
+                "torchaudio",
+                "--index-url",
+                index_url,
             ]
         } else {
             vec![
-                "-m", "pip", "install",
-                "--progress-bar", "off",
+                "-m",
+                "pip",
+                "install",
+                "--progress-bar",
+                "off",
                 "--no-input",
-                "torch", "torchvision", "torchaudio",
+                "torch",
+                "torchvision",
+                "torchaudio",
             ]
         };
 
-        match pip_install_streaming_with_retry_cancellable(&torch_args, &effective_python, 3, &install_status, Some(&cancel_flag)) {
+        match pip_install_streaming_with_retry_cancellable(
+            &torch_args,
+            &effective_python,
+            3,
+            &install_status,
+            Some(&cancel_flag),
+        ) {
             Ok(()) => {
                 update("installing", "PyTorch installed successfully.");
             }
@@ -731,29 +769,48 @@ pub fn install_comfyui(
         }
 
         if cancelled() {
-            update("cancelled", "Install cancelled before requirements install.");
+            update(
+                "cancelled",
+                "Install cancelled before requirements install.",
+            );
             return;
         }
 
         // Step 3: Install ComfyUI requirements
         println!("[Install] Installing ComfyUI requirements...");
-        update("installing", "Step 3/3: Installing ComfyUI dependencies (live pip output below)...");
+        update(
+            "installing",
+            "Step 3/3: Installing ComfyUI dependencies (live pip output below)...",
+        );
 
         let reqs = target_dir.join("requirements.txt");
         if reqs.exists() {
             let reqs_str = reqs.to_string_lossy().to_string();
             let req_args = vec![
-                "-m", "pip", "install",
-                "--progress-bar", "off",
+                "-m",
+                "pip",
+                "install",
+                "--progress-bar",
+                "off",
                 "--no-input",
-                "-r", reqs_str.as_str(),
+                "-r",
+                reqs_str.as_str(),
             ];
-            match pip_install_streaming_with_retry_cancellable(&req_args, &effective_python, 3, &install_status, Some(&cancel_flag)) {
+            match pip_install_streaming_with_retry_cancellable(
+                &req_args,
+                &effective_python,
+                3,
+                &install_status,
+                Some(&cancel_flag),
+            ) {
                 Ok(()) => {
                     update("installing", "Dependencies installed successfully.");
                 }
                 Err(diagnosis) if diagnosis == "cancelled" => {
-                    update("cancelled", "Install cancelled during requirements install.");
+                    update(
+                        "cancelled",
+                        "Install cancelled during requirements install.",
+                    );
                     return;
                 }
                 Err(diagnosis) => {
@@ -879,7 +936,10 @@ pub fn update_comfyui(state: State<'_, AppState>) -> Result<serde_json::Value, S
         {
             let probe = windows_git_probe();
             if probe == WindowsGitState::Missing {
-                update("error", &windows_git_install_hint(&probe).unwrap_or_default());
+                update(
+                    "error",
+                    &windows_git_install_hint(&probe).unwrap_or_default(),
+                );
                 return;
             }
         }
@@ -900,7 +960,11 @@ pub fn update_comfyui(state: State<'_, AppState>) -> Result<serde_json::Value, S
                 let line = out.lines().last().unwrap_or("").trim().to_string();
                 update(
                     "installing",
-                    if line.is_empty() { "Repository updated." } else { &line },
+                    if line.is_empty() {
+                        "Repository updated."
+                    } else {
+                        &line
+                    },
                 );
             }
             Ok(o) => {
@@ -929,10 +993,14 @@ pub fn update_comfyui(state: State<'_, AppState>) -> Result<serde_json::Value, S
         if reqs.exists() {
             let reqs_str = reqs.to_string_lossy().to_string();
             let req_args = vec![
-                "-m", "pip", "install",
-                "--progress-bar", "off",
+                "-m",
+                "pip",
+                "install",
+                "--progress-bar",
+                "off",
                 "--no-input",
-                "-r", reqs_str.as_str(),
+                "-r",
+                reqs_str.as_str(),
             ];
             match pip_install_streaming_with_retry_cancellable(
                 &req_args,
@@ -978,7 +1046,10 @@ fn download_file_blocking(
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
-    let response = client.get(url).send().map_err(|e| format!("Request failed: {}", e))?;
+    let response = client
+        .get(url)
+        .send()
+        .map_err(|e| format!("Request failed: {}", e))?;
 
     if !response.status().is_success() {
         return Err(format!("HTTP {}", response.status()));
@@ -998,7 +1069,9 @@ fn download_file_blocking(
     let mut buf = [0u8; 65536]; // 64KB chunks
 
     loop {
-        let n = reader.read(&mut buf).map_err(|e| format!("Read error: {}", e))?;
+        let n = reader
+            .read(&mut buf)
+            .map_err(|e| format!("Read error: {}", e))?;
         if n == 0 {
             break;
         }
@@ -1031,7 +1104,10 @@ fn download_file_blocking(
 #[tauri::command]
 pub fn install_ollama(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let mut install = state.ollama_install.lock().unwrap();
-    if install.status == "downloading" || install.status == "installing" || install.status == "starting" {
+    if install.status == "downloading"
+        || install.status == "installing"
+        || install.status == "starting"
+    {
         return Ok(serde_json::json!({"status": "already_installing"}));
     }
 
@@ -1040,7 +1116,9 @@ pub fn install_ollama(state: State<'_, AppState>) -> Result<serde_json::Value, S
     install.download_progress = 0;
     install.download_total = 0;
     install.download_speed = 0.0;
-    install.logs.push("Downloading Ollama installer...".to_string());
+    install
+        .logs
+        .push("Downloading Ollama installer...".to_string());
     drop(install);
 
     info!("ollama install start");
@@ -1108,11 +1186,17 @@ pub fn linux_python_install_hint(os_release: &str) -> String {
 
     if has("arch") || has("manjaro") || has("endeavouros") || has("garuda") {
         "`sudo pacman -S python python-pip`".to_string()
-    } else if has("debian") || has("ubuntu") || has("linuxmint") || has("pop") || has("elementary") {
+    } else if has("debian") || has("ubuntu") || has("linuxmint") || has("pop") || has("elementary")
+    {
         "`sudo apt install python3 python3-pip python3-venv`".to_string()
     } else if has("fedora") || has("rhel") || has("centos") || has("rocky") || has("almalinux") {
         "`sudo dnf install python3 python3-pip`".to_string()
-    } else if has("opensuse") || has("opensuse-tumbleweed") || has("opensuse-leap") || has("suse") || has("sles") {
+    } else if has("opensuse")
+        || has("opensuse-tumbleweed")
+        || has("opensuse-leap")
+        || has("suse")
+        || has("sles")
+    {
         "`sudo zypper install python3 python3-pip`".to_string()
     } else {
         "your distro's package manager".to_string()
@@ -1185,14 +1269,16 @@ pub fn windows_git_install_hint(state: &WindowsGitState) -> Option<String> {
         WindowsGitState::Missing => Some(
             "Git is not installed or not on PATH. Install Git for Windows from \
              https://git-scm.com/download/win and restart LU so the new PATH \
-             is picked up.".to_string(),
+             is picked up."
+                .to_string(),
         ),
         WindowsGitState::NonNative => Some(
             "A non-native `git` binary is first on PATH (likely WSL or a Linux \
              mount). It may fail to clone into Windows-style paths. If the \
              ComfyUI install errors out during clone, install Git for Windows \
              from https://git-scm.com/download/win and make sure its `cmd` \
-             folder is ahead of any WSL git in your PATH.".to_string(),
+             folder is ahead of any WSL git in your PATH."
+                .to_string(),
         ),
     }
 }
@@ -1329,7 +1415,10 @@ fn install_ollama_windows_impl<F: Fn(&str, &str)>(
     match cmd.output() {
         Ok(o) => {
             let code = o.status.code().unwrap_or(-1);
-            update("starting", &format!("Installer finished (code {}). Starting Ollama...", code));
+            update(
+                "starting",
+                &format!("Installer finished (code {}). Starting Ollama...", code),
+            );
         }
         Err(e) => {
             update("error", &format!("Could not run installer: {}", e));
@@ -1338,14 +1427,20 @@ fn install_ollama_windows_impl<F: Fn(&str, &str)>(
     }
     let _ = fs::remove_file(&installer_path);
     let mut serve = Command::new("ollama");
-    serve.arg("serve").stdout(Stdio::piped()).stderr(Stdio::piped());
+    serve
+        .arg("serve")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     serve.creation_flags(CREATE_NO_WINDOW);
     let _ = serve.spawn();
     update("starting", "Waiting for Ollama to start...");
     if wait_for_ollama_ready() {
         update("complete", "Ollama is ready!");
     } else {
-        update("error", "Ollama installed but not responding. Try restarting the app.");
+        update(
+            "error",
+            "Ollama installed but not responding. Try restarting the app.",
+        );
     }
 }
 
@@ -1389,9 +1484,15 @@ fn install_ollama_linux_impl<F: Fn(&str, &str)>(
     }
 
     // ollama is already on PATH — spawn it and poll the API.
-    update("starting", "Ollama is already installed — starting service...");
+    update(
+        "starting",
+        "Ollama is already installed — starting service...",
+    );
     let mut serve = Command::new("ollama");
-    serve.arg("serve").stdout(Stdio::piped()).stderr(Stdio::piped());
+    serve
+        .arg("serve")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let _ = serve.spawn();
 
     update("starting", "Waiting for Ollama to start...");
@@ -1431,7 +1532,8 @@ pub fn linux_ollama_install_hint(os_release: &str) -> String {
     let has = |needle: &str| families.iter().any(|f| f == needle);
     if has("arch") || has("manjaro") || has("endeavouros") || has("garuda") {
         "`sudo pacman -S ollama`".to_string()
-    } else if has("debian") || has("ubuntu") || has("linuxmint") || has("pop") || has("elementary") {
+    } else if has("debian") || has("ubuntu") || has("linuxmint") || has("pop") || has("elementary")
+    {
         "`sudo apt install ollama` (Debian 12+ / Ubuntu 23.10+) or `curl -fsSL https://ollama.com/install.sh | sh`".to_string()
     } else if has("fedora") || has("rhel") || has("centos") || has("rocky") || has("almalinux") {
         "`curl -fsSL https://ollama.com/install.sh | sh`".to_string()
@@ -1447,15 +1549,26 @@ fn install_ollama_macos_impl<F: Fn(&str, &str)>(
     _ollama_state: &Arc<Mutex<InstallState>>,
     update: F,
 ) {
-    if Command::new("which").arg("ollama").output().map(|o| o.status.success()).unwrap_or(false) {
+    if Command::new("which")
+        .arg("ollama")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
         update("starting", "Ollama already installed — starting service...");
         let mut serve = Command::new("ollama");
-        serve.arg("serve").stdout(Stdio::piped()).stderr(Stdio::piped());
+        serve
+            .arg("serve")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         let _ = serve.spawn();
         if wait_for_ollama_ready() {
             update("complete", "Ollama is ready!");
         } else {
-            update("error", "Ollama is installed but the API isn't responding. Try restarting Ollama.app.");
+            update(
+                "error",
+                "Ollama is installed but the API isn't responding. Try restarting Ollama.app.",
+            );
         }
         return;
     }
@@ -1526,7 +1639,9 @@ fn lmstudio_lms_path() -> Option<PathBuf> {
         let mut pre_bootstrap = PathBuf::from(la);
         pre_bootstrap.push("Programs");
         pre_bootstrap.push("LM Studio");
-        for s in &webpack_suffix { pre_bootstrap.push(s); }
+        for s in &webpack_suffix {
+            pre_bootstrap.push(s);
+        }
         if pre_bootstrap.exists() {
             return Some(pre_bootstrap);
         }
@@ -1541,7 +1656,9 @@ fn lmstudio_lms_path() -> Option<PathBuf> {
         if let Ok(pf) = std::env::var(env_var) {
             let mut sys_wide = PathBuf::from(pf);
             sys_wide.push("LM Studio");
-            for s in &webpack_suffix { sys_wide.push(s); }
+            for s in &webpack_suffix {
+                sys_wide.push(s);
+            }
             if sys_wide.exists() {
                 return Some(sys_wide);
             }
@@ -1553,7 +1670,11 @@ fn lmstudio_lms_path() -> Option<PathBuf> {
     // exotic install dirs (e.g. user moved it to D:\Apps\LM Studio\).
     #[cfg(target_os = "windows")]
     if let Some(p) = lmstudio_path_from_registry() {
-        let candidate = p.join("resources").join("app").join(".webpack").join("lms.exe");
+        let candidate = p
+            .join("resources")
+            .join("app")
+            .join(".webpack")
+            .join("lms.exe");
         if candidate.exists() {
             return Some(candidate);
         }
@@ -1619,7 +1740,12 @@ fn lmstudio_models_present() -> u32 {
             let path = entry.path();
             if path.is_dir() {
                 walk(&path, depth + 1, found);
-            } else if path.extension().and_then(|e| e.to_str()).map(|s| s.eq_ignore_ascii_case("gguf")).unwrap_or(false) {
+            } else if path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|s| s.eq_ignore_ascii_case("gguf"))
+                .unwrap_or(false)
+            {
                 *found += 1;
                 if *found >= 1000 {
                     return;
@@ -1646,10 +1772,14 @@ fn lmstudio_path_from_registry() -> Option<PathBuf> {
             r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
             r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
         ] {
-            let Ok(uninstall) = root.open_subkey(uninstall_path) else { continue };
+            let Ok(uninstall) = root.open_subkey(uninstall_path) else {
+                continue;
+            };
             for key_res in uninstall.enum_keys() {
                 let Ok(key) = key_res else { continue };
-                let Ok(sub) = uninstall.open_subkey(&key) else { continue };
+                let Ok(sub) = uninstall.open_subkey(&key) else {
+                    continue;
+                };
                 let name: String = sub.get_value("DisplayName").unwrap_or_default();
                 if name.eq_ignore_ascii_case("LM Studio") || name.starts_with("LM Studio") {
                     if let Ok(loc) = sub.get_value::<String, _>("InstallLocation") {
@@ -1681,7 +1811,11 @@ fn lmstudio_gui_exe() -> Option<PathBuf> {
         .join("Programs")
         .join("LM Studio")
         .join("LM Studio.exe");
-    if p.exists() { Some(p) } else { None }
+    if p.exists() {
+        Some(p)
+    } else {
+        None
+    }
 }
 
 /// Fast, BOUNDED reachability probe for the LM Studio server. A plain HTTP GET
@@ -1712,7 +1846,10 @@ fn lmstudio_server_running() -> bool {
         .build();
     if let Ok(c) = client {
         return c
-            .get(format!("http://127.0.0.1:{}/v1/models", LMSTUDIO_DEFAULT_PORT))
+            .get(format!(
+                "http://127.0.0.1:{}/v1/models",
+                LMSTUDIO_DEFAULT_PORT
+            ))
             .send()
             .map(|r| r.status().is_success() || r.status() == 401)
             .unwrap_or(false);
@@ -1882,8 +2019,8 @@ pub fn install_lmstudio(state: State<'_, AppState>) -> Result<serde_json::Value,
         // Did pass 1 produce ~/.lmstudio/bin/lms.exe?  If yes, skip the GUI
         // dance entirely. If no, fall back to launching the GUI so it seeds
         // its user-data dir, then retry bootstrap.
-        let post_bootstrap_path = dirs::home_dir()
-            .map(|h| h.join(".lmstudio").join("bin").join("lms.exe"));
+        let post_bootstrap_path =
+            dirs::home_dir().map(|h| h.join(".lmstudio").join("bin").join("lms.exe"));
         let needs_gui_seed = post_bootstrap_path
             .as_ref()
             .map(|p| !p.exists())
@@ -2093,7 +2230,10 @@ pub async fn lmstudio_list_loaded() -> Result<serde_json::Value, String> {
 
 #[allow(non_snake_case)]
 #[tauri::command]
-pub fn lmstudio_load_model(model: String, contextLength: Option<u32>) -> Result<serde_json::Value, String> {
+pub fn lmstudio_load_model(
+    model: String,
+    contextLength: Option<u32>,
+) -> Result<serde_json::Value, String> {
     let lms = lmstudio_lms_path()
         .ok_or_else(|| "lms CLI not found — install LM Studio first".to_string())?;
     // `lms load` blocks until the model is in memory. The caller is expected
@@ -2138,9 +2278,7 @@ pub fn lmstudio_load_model(model: String, contextLength: Option<u32>) -> Result<
     cmd.args(&args);
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
-    let output = cmd
-        .output()
-        .map_err(|e| format!("spawn lms load: {e}"))?;
+    let output = cmd.output().map_err(|e| format!("spawn lms load: {e}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -2154,7 +2292,10 @@ pub fn lmstudio_load_model(model: String, contextLength: Option<u32>) -> Result<
         );
         return Err(format!("lms load failed: {}", stderr.trim()));
     }
-    eprintln!("[lmstudio_load_model] OK model='{}' ctx={:?}", model, contextLength);
+    eprintln!(
+        "[lmstudio_load_model] OK model='{}' ctx={:?}",
+        model, contextLength
+    );
     Ok(serde_json::json!({ "ok": true, "model": model, "contextLength": contextLength }))
 }
 
@@ -2217,15 +2358,12 @@ pub async fn lmstudio_model_context(model: String) -> Result<serde_json::Value, 
 
 #[tauri::command]
 pub fn lmstudio_unload_model(model: String) -> Result<serde_json::Value, String> {
-    let lms = lmstudio_lms_path()
-        .ok_or_else(|| "lms CLI not found".to_string())?;
+    let lms = lmstudio_lms_path().ok_or_else(|| "lms CLI not found".to_string())?;
     let mut cmd = Command::new(&lms);
     cmd.args(["unload", &model]);
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
-    let output = cmd
-        .output()
-        .map_err(|e| format!("spawn lms unload: {e}"))?;
+    let output = cmd.output().map_err(|e| format!("spawn lms unload: {e}"))?;
     if !output.status.success() {
         return Err(format!(
             "lms unload failed: {}",
@@ -2422,7 +2560,10 @@ pub fn install_python(state: State<'_, AppState>) -> Result<serde_json::Value, S
                 }
                 update(
                     "complete",
-                    &format!("Python ready (winget exit {} ignored, Python detected at {})", code, resolved),
+                    &format!(
+                        "Python ready (winget exit {} ignored, Python detected at {})",
+                        code, resolved
+                    ),
                 );
                 return;
             }
@@ -2451,13 +2592,13 @@ pub fn install_python(state: State<'_, AppState>) -> Result<serde_json::Value, S
                 if let Ok(mut slot) = py_bin_slot.lock() {
                     *slot = resolved.clone();
                 }
-                update(
-                    "complete",
-                    &format!("Python ready at {}", resolved),
-                );
+                update("complete", &format!("Python ready at {}", resolved));
                 return;
             }
-            println!("[Python] post-install resolve attempt {}/15 — not yet on PATH", attempt + 1);
+            println!(
+                "[Python] post-install resolve attempt {}/15 — not yet on PATH",
+                attempt + 1
+            );
         }
 
         update(
@@ -2519,8 +2660,11 @@ pub fn python_check(state: State<'_, AppState>) -> Result<serde_json::Value, Str
 /// pip bars are noise in our log stream).
 fn build_whisper_pip_args() -> Vec<&'static str> {
     vec![
-        "-m", "pip", "install",
-        "--progress-bar", "off",
+        "-m",
+        "pip",
+        "install",
+        "--progress-bar",
+        "off",
         "--no-input",
         "faster-whisper",
     ]
@@ -2547,7 +2691,9 @@ pub fn install_whisper(
         }
         install.status = "installing".to_string();
         install.logs.clear();
-        install.logs.push("Starting faster-whisper installation...".to_string());
+        install
+            .logs
+            .push("Starting faster-whisper installation...".to_string());
     }
 
     info!("whisper install start");
@@ -2579,7 +2725,13 @@ pub fn install_whisper(
             }
         };
 
-        update("installing", &format!("Installing faster-whisper via {} (this can take a few minutes)…", target_python));
+        update(
+            "installing",
+            &format!(
+                "Installing faster-whisper via {} (this can take a few minutes)…",
+                target_python
+            ),
+        );
 
         let mut args = build_whisper_pip_args();
         // Arch / Debian 12+ / Fedora 38+ system Python is PEP 668 protected, so a
@@ -2593,9 +2745,18 @@ pub fn install_whisper(
         }
         // No cancel flag — this single pip install is short relative to the
         // ComfyUI PyTorch download, so we run it to completion like install_python.
-        match pip_install_streaming_with_retry_cancellable(&args, &target_python, 3, &install_state, None) {
+        match pip_install_streaming_with_retry_cancellable(
+            &args,
+            &target_python,
+            3,
+            &install_state,
+            None,
+        ) {
             Ok(()) => {
-                update("installing", "faster-whisper installed. Starting the speech-to-text server…");
+                update(
+                    "installing",
+                    "faster-whisper installed. Starting the speech-to-text server…",
+                );
                 // Start the persistent server with the SAME Python we installed
                 // into, so the import check passes and whisper_status flips to
                 // available without an app restart. auto_start_whisper_sync
@@ -2604,7 +2765,11 @@ pub fn install_whisper(
                 {
                     let already_running = whisper.lock().map(|w| w.ready).unwrap_or(false);
                     if !already_running {
-                        crate::commands::whisper::auto_start_whisper_sync(&app, &target_python, &whisper);
+                        crate::commands::whisper::auto_start_whisper_sync(
+                            &app,
+                            &target_python,
+                            &whisper,
+                        );
                     }
                 }
                 let started = whisper.lock().map(|w| w.ready).unwrap_or(false);
@@ -2664,7 +2829,11 @@ pub fn resolve_lu_python(state: &AppState) -> String {
     // Python may have been installed AFTER launch (Bug B8) — re-resolve once and
     // refresh the cache so install_tts/install_whisper don't wrongly report "no
     // Python found" until the next restart.
-    let cached = state.python_bin.lock().map(|g| g.clone()).unwrap_or_default();
+    let cached = state
+        .python_bin
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_default();
     if crate::python::is_real_python(&cached) {
         return cached;
     }
@@ -2681,8 +2850,11 @@ pub fn resolve_lu_python(state: &AppState) -> String {
 /// `piper.download_voices` helper. Same flags as the whisper installer.
 fn build_tts_pip_args() -> Vec<&'static str> {
     vec![
-        "-m", "pip", "install",
-        "--progress-bar", "off",
+        "-m",
+        "pip",
+        "install",
+        "--progress-bar",
+        "off",
         "--no-input",
         "piper-tts",
     ]
@@ -2703,7 +2875,9 @@ pub fn install_tts(
         }
         install.status = "installing".to_string();
         install.logs.clear();
-        install.logs.push("Starting neural TTS (Piper) installation...".to_string());
+        install
+            .logs
+            .push("Starting neural TTS (Piper) installation...".to_string());
     }
 
     info!("tts install start");
@@ -2739,7 +2913,10 @@ pub fn install_tts(
 
         update(
             "installing",
-            &format!("Installing piper-tts via {} (this can take a few minutes)…", target_python),
+            &format!(
+                "Installing piper-tts via {} (this can take a few minutes)…",
+                target_python
+            ),
         );
 
         let mut args = build_tts_pip_args();
@@ -2749,7 +2926,13 @@ pub fn install_tts(
             args.push("--break-system-packages");
             args.push("--user");
         }
-        match pip_install_streaming_with_retry_cancellable(&args, &target_python, 3, &install_state, None) {
+        match pip_install_streaming_with_retry_cancellable(
+            &args,
+            &target_python,
+            3,
+            &install_state,
+            None,
+        ) {
             Ok(()) => {
                 update(
                     "installing",
@@ -2778,7 +2961,10 @@ pub fn install_tts(
                     Ok(o) => {
                         update(
                             "error",
-                            &format!("Voice download failed:\n{}", String::from_utf8_lossy(&o.stderr)),
+                            &format!(
+                                "Voice download failed:\n{}",
+                                String::from_utf8_lossy(&o.stderr)
+                            ),
                         );
                     }
                     Err(e) => {
@@ -2859,7 +3045,9 @@ fn install_custom_node_blocking(
         || repo_url.len() > 512
         || repo_url.contains(|c: char| c.is_whitespace() || c.is_control())
     {
-        return Err("Refusing to install: repository URL must be a plain https:// URL.".to_string());
+        return Err(
+            "Refusing to install: repository URL must be a plain https:// URL.".to_string(),
+        );
     }
     if node_name.is_empty()
         || node_name.len() > 128
@@ -2927,13 +3115,19 @@ fn install_custom_node_blocking(
     let mut fresh_clone = true;
     if target_dir.exists() {
         if target_dir.join(".git").exists() {
-            println!("[Install] Custom node {} already exists, updating...", node_name);
+            println!(
+                "[Install] Custom node {} already exists, updating...",
+                node_name
+            );
             let mut cmd = Command::new("git");
-            cmd.args(["pull"]).current_dir(&target_dir)
-                .stdout(Stdio::piped()).stderr(Stdio::piped());
+            cmd.args(["pull"])
+                .current_dir(&target_dir)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
             #[cfg(target_os = "windows")]
             cmd.creation_flags(CREATE_NO_WINDOW);
-            let output = cmd.output()
+            let output = cmd
+                .output()
                 .map_err(|e| format!("Git pull failed: {}", e))?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2941,7 +3135,9 @@ fn install_custom_node_blocking(
                 return Err(format!(
                     "Failed to update {} (git pull): {}\n\nIf this keeps failing, \
                      delete the folder {} and try the install again.",
-                    node_name, stderr.trim(), target_dir.to_string_lossy()
+                    node_name,
+                    stderr.trim(),
+                    target_dir.to_string_lossy()
                 ));
             }
             fresh_clone = false;
@@ -2957,13 +3153,19 @@ fn install_custom_node_blocking(
     }
 
     if fresh_clone {
-        println!("[Install] Cloning custom node {} from {}", node_name, repo_url);
+        println!(
+            "[Install] Cloning custom node {} from {}",
+            node_name, repo_url
+        );
         let mut cmd = Command::new("git");
-        cmd.args(["clone", &repo_url]).arg(&target_dir)
-            .stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.args(["clone", &repo_url])
+            .arg(&target_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         #[cfg(target_os = "windows")]
         cmd.creation_flags(CREATE_NO_WINDOW);
-        let output = cmd.output()
+        let output = cmd
+            .output()
             .map_err(|e| format!("Git clone failed: {}", e))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2995,7 +3197,8 @@ fn move_aside_broken_node_dir(target_dir: &std::path::Path) -> Result<PathBuf, S
         format!(
             "The folder {} exists but is not a valid git checkout, and it could \
              not be moved aside: {}. Delete it manually and try again.",
-            target_dir.display(), e
+            target_dir.display(),
+            e
         )
     })?;
     Ok(backup)
@@ -3034,7 +3237,10 @@ fn install_node_requirements(
             node_name
         ));
     }
-    println!("[Install] Installing requirements for {} via {}", node_name, python_bin);
+    println!(
+        "[Install] Installing requirements for {} via {}",
+        node_name, python_bin
+    );
     let run_pip = |extra: &[&str]| -> Result<std::process::Output, String> {
         let mut pip = Command::new(&python_bin);
         pip.args(["-m", "pip", "install", "--no-input"]);
@@ -3185,9 +3391,7 @@ mod tests {
 
     #[test]
     fn transient_detects_429_rate_limit() {
-        assert!(is_transient_pip_error(
-            "ERROR: 429 Too Many Requests"
-        ));
+        assert!(is_transient_pip_error("ERROR: 429 Too Many Requests"));
     }
 
     #[test]
@@ -3314,7 +3518,9 @@ mod tests {
     fn diagnose_ssl_includes_antivirus_hint() {
         let msg = diagnose_pip_error("SSLError(SSLZeroReturnError(...))");
         let lower = msg.to_lowercase();
-        assert!(lower.contains("antivirus") || lower.contains("firewall") || lower.contains("clock"));
+        assert!(
+            lower.contains("antivirus") || lower.contains("firewall") || lower.contains("clock")
+        );
     }
 
     #[test]
@@ -3340,19 +3546,26 @@ mod tests {
     fn diagnose_permission_suggests_close_python() {
         let msg = diagnose_pip_error("PermissionError: [Errno 13] Permission denied");
         let lower = msg.to_lowercase();
-        assert!(lower.contains("permission") && (lower.contains("python") || lower.contains("close") || lower.contains("ide")));
+        assert!(
+            lower.contains("permission")
+                && (lower.contains("python") || lower.contains("close") || lower.contains("ide"))
+        );
     }
 
     #[test]
     fn diagnose_no_module_suggests_python_reinstall() {
         let msg = diagnose_pip_error("ModuleNotFoundError: No module named 'pip'");
         let lower = msg.to_lowercase();
-        assert!(lower.contains("python") && (lower.contains("reinstall") || lower.contains("3.10")));
+        assert!(
+            lower.contains("python") && (lower.contains("reinstall") || lower.contains("3.10"))
+        );
     }
 
     #[test]
     fn diagnose_no_matching_version_suggests_python_version() {
-        let msg = diagnose_pip_error("ERROR: Could not find a version that satisfies the requirement torch");
+        let msg = diagnose_pip_error(
+            "ERROR: Could not find a version that satisfies the requirement torch",
+        );
         let lower = msg.to_lowercase();
         assert!(lower.contains("python") || lower.contains("version") || lower.contains("3.10"));
     }
@@ -3530,7 +3743,11 @@ mod tests {
     fn linux_hint_manjaro_via_id_like_arch() {
         let release = "NAME=\"Manjaro\"\nID=manjaro\nID_LIKE=arch\n";
         let hint = linux_python_install_hint(release);
-        assert!(hint.contains("pacman"), "Manjaro should map to Arch family, got: {}", hint);
+        assert!(
+            hint.contains("pacman"),
+            "Manjaro should map to Arch family, got: {}",
+            hint
+        );
     }
 
     #[test]
@@ -3559,12 +3776,17 @@ mod tests {
     fn linux_hint_rocky_via_id_like_rhel() {
         let release = "NAME=\"Rocky Linux\"\nID=rocky\nID_LIKE=\"rhel centos fedora\"\n";
         let hint = linux_python_install_hint(release);
-        assert!(hint.contains("dnf"), "RHEL-family should suggest dnf, got: {}", hint);
+        assert!(
+            hint.contains("dnf"),
+            "RHEL-family should suggest dnf, got: {}",
+            hint
+        );
     }
 
     #[test]
     fn linux_hint_opensuse_via_id_like() {
-        let release = "NAME=\"openSUSE Tumbleweed\"\nID=opensuse-tumbleweed\nID_LIKE=\"opensuse suse\"\n";
+        let release =
+            "NAME=\"openSUSE Tumbleweed\"\nID=opensuse-tumbleweed\nID_LIKE=\"opensuse suse\"\n";
         let hint = linux_python_install_hint(release);
         assert!(hint.contains("zypper"), "got: {}", hint);
     }
@@ -3609,7 +3831,11 @@ mod tests {
         let release = "NAME=\"Ubuntu\"\nID=ubuntu\nID_LIKE=debian\n";
         let hint = linux_ollama_install_hint(release);
         assert!(hint.contains("apt install ollama"), "got: {}", hint);
-        assert!(hint.contains("install.sh"), "should also offer official installer, got: {}", hint);
+        assert!(
+            hint.contains("install.sh"),
+            "should also offer official installer, got: {}",
+            hint
+        );
     }
 
     #[test]
@@ -3623,21 +3849,34 @@ mod tests {
     fn ollama_hint_rocky_via_id_like_rhel() {
         let release = "NAME=\"Rocky Linux\"\nID=rocky\nID_LIKE=\"rhel centos fedora\"\n";
         let hint = linux_ollama_install_hint(release);
-        assert!(hint.contains("install.sh"), "RHEL-family should get install.sh, got: {}", hint);
+        assert!(
+            hint.contains("install.sh"),
+            "RHEL-family should get install.sh, got: {}",
+            hint
+        );
     }
 
     #[test]
     fn ollama_hint_opensuse_recommends_zypper_or_install_sh() {
-        let release = "NAME=\"openSUSE Tumbleweed\"\nID=opensuse-tumbleweed\nID_LIKE=\"opensuse suse\"\n";
+        let release =
+            "NAME=\"openSUSE Tumbleweed\"\nID=opensuse-tumbleweed\nID_LIKE=\"opensuse suse\"\n";
         let hint = linux_ollama_install_hint(release);
-        assert!(hint.contains("zypper install ollama") || hint.contains("install.sh"), "got: {}", hint);
+        assert!(
+            hint.contains("zypper install ollama") || hint.contains("install.sh"),
+            "got: {}",
+            hint
+        );
     }
 
     #[test]
     fn ollama_hint_unknown_distro_falls_back_to_install_sh() {
         let release = "NAME=\"Some Custom Distro\"\nID=mystery\n";
         let hint = linux_ollama_install_hint(release);
-        assert!(hint.contains("install.sh") || hint.contains("ollama.com"), "got: {}", hint);
+        assert!(
+            hint.contains("install.sh") || hint.contains("ollama.com"),
+            "got: {}",
+            hint
+        );
     }
 
     #[test]
@@ -3695,9 +3934,19 @@ mod tests {
         let venv_py = create_comfyui_venv(&comfy_root, &fake_python)
             .expect("create_comfyui_venv should succeed against fake python");
 
-        assert!(venv_py.exists(), "venv python at {} should exist", venv_py.display());
-        assert!(venv_py.starts_with(&comfy_root), "venv python should be inside comfy dir");
-        println!("[live E2E] ✓ create_comfyui_venv produced {}", venv_py.display());
+        assert!(
+            venv_py.exists(),
+            "venv python at {} should exist",
+            venv_py.display()
+        );
+        assert!(
+            venv_py.starts_with(&comfy_root),
+            "venv python should be inside comfy dir"
+        );
+        println!(
+            "[live E2E] ✓ create_comfyui_venv produced {}",
+            venv_py.display()
+        );
 
         // ── Phase 3: nested venv's pip should be UNBLOCKED ──
         // The venv has its own site-packages, so PEP 668 doesn't apply to
@@ -3720,7 +3969,11 @@ mod tests {
              Output:\n{}",
             combined
         );
-        assert!(pip_out.status.success(), "nested venv pip exit code != 0:\n{}", combined);
+        assert!(
+            pip_out.status.success(),
+            "nested venv pip exit code != 0:\n{}",
+            combined
+        );
         println!("[live E2E] ✓ nested venv pip runs without PEP 668 block");
 
         // ── Phase 4: idempotency — second create_comfyui_venv must no-op ──
@@ -3849,7 +4102,10 @@ mod tests {
                 assert!(h.to_lowercase().contains("git-scm.com/download/win"));
             }
         }
-        println!("[live E2E] windows_git_probe() on this host returned: {:?}", state);
+        println!(
+            "[live E2E] windows_git_probe() on this host returned: {:?}",
+            state
+        );
     }
 
     #[test]
@@ -3858,7 +4114,11 @@ mod tests {
         let lower = hint.to_lowercase();
         // Must call out the WSL/PATH ordering scenario juliandiggins hit so
         // users know exactly what to check.
-        assert!(lower.contains("path"), "NonNative hint must mention PATH: {}", hint);
+        assert!(
+            lower.contains("path"),
+            "NonNative hint must mention PATH: {}",
+            hint
+        );
         assert!(
             lower.contains("wsl") || lower.contains("linux"),
             "NonNative hint should mention WSL or Linux: {}",
@@ -3875,9 +4135,17 @@ mod tests {
         // Drives `python -m pip install … faster-whisper` — the package the
         // STT backend (whisper_server.py) actually imports.
         assert_eq!(&args[..3], &["-m", "pip", "install"]);
-        assert!(args.contains(&"faster-whisper"), "must install faster-whisper: {:?}", args);
+        assert!(
+            args.contains(&"faster-whisper"),
+            "must install faster-whisper: {:?}",
+            args
+        );
         // Non-interactive + quiet progress, matching the ComfyUI installer.
-        assert!(args.contains(&"--no-input"), "must pass --no-input: {:?}", args);
+        assert!(
+            args.contains(&"--no-input"),
+            "must pass --no-input: {:?}",
+            args
+        );
         let pos = args.iter().position(|a| *a == "--progress-bar");
         assert!(pos.is_some(), "must set --progress-bar: {:?}", args);
         assert_eq!(args[pos.unwrap() + 1], "off");

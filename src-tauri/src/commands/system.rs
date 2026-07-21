@@ -41,11 +41,7 @@ pub fn process_list() -> Result<serde_json::Value, String> {
         b.get("memory")
             .and_then(|v| v.as_u64())
             .unwrap_or(0)
-            .cmp(
-                &a.get("memory")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0),
-            )
+            .cmp(&a.get("memory").and_then(|v| v.as_u64()).unwrap_or(0))
     });
     processes.truncate(50);
 
@@ -266,7 +262,10 @@ fn format_datetime(unix_secs: u64) -> (String, String, String, i32) {
     let offset_minutes = local_offset_minutes();
     let local_unix = (unix_secs as i64) + (offset_minutes as i64) * 60;
     let (ly, lmo, ld, lh, lmi, ls) = unix_to_utc_parts(local_unix.max(0) as u64);
-    let iso_local = format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", ly, lmo, ld, lh, lmi, ls);
+    let iso_local = format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        ly, lmo, ld, lh, lmi, ls
+    );
 
     let sign = if offset_minutes >= 0 { '+' } else { '-' };
     let abs = offset_minutes.unsigned_abs();
@@ -308,14 +307,18 @@ fn local_offset_minutes() -> i32 {
 fn parse_offset_to_minutes(s: &str) -> Option<i32> {
     // Accepts +HH:MM, +HHMM, -HH:MM, -HHMM
     let bytes = s.as_bytes();
-    if bytes.is_empty() { return None; }
+    if bytes.is_empty() {
+        return None;
+    }
     let sign = match bytes[0] {
         b'+' => 1,
         b'-' => -1,
         _ => return None,
     };
     let digits: String = s[1..].chars().filter(|c| c.is_ascii_digit()).collect();
-    if digits.len() < 3 { return None; }
+    if digits.len() < 3 {
+        return None;
+    }
     let hh: i32 = digits[..2].parse().ok()?;
     let mm: i32 = digits[2..4.min(digits.len())].parse().ok().unwrap_or(0);
     Some(sign * (hh * 60 + mm))
@@ -334,15 +337,32 @@ fn unix_to_utc_parts(mut unix: u64) -> (i32, u32, u32, u32, u32, u32) {
     let mut year: i32 = 1970;
     loop {
         let days_in_year = if is_leap(year) { 366 } else { 365 };
-        if unix < days_in_year as u64 { break; }
+        if unix < days_in_year as u64 {
+            break;
+        }
         unix -= days_in_year as u64;
         year += 1;
     }
     let leap = is_leap(year);
-    let days_per_month = [31u64, if leap {29} else {28}, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let days_per_month = [
+        31u64,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut month: u32 = 1;
     for dm in &days_per_month {
-        if unix < *dm { break; }
+        if unix < *dm {
+            break;
+        }
         unix -= dm;
         month += 1;
     }

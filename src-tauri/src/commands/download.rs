@@ -16,7 +16,10 @@ use crate::state::{AppState, DownloadProgress};
 /// an autostart payload. Falls back to "download" if nothing usable remains.
 fn sanitize_filename(name: &str) -> String {
     let base = name.rsplit(|c| c == '/' || c == '\\').next().unwrap_or("");
-    let cleaned: String = base.chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '\0')).collect();
+    let cleaned: String = base
+        .chars()
+        .filter(|c| !matches!(c, '/' | '\\' | ':' | '\0'))
+        .collect();
     let cleaned = cleaned.trim();
     if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
         "download".to_string()
@@ -43,7 +46,7 @@ fn safe_subfolder(subfolder: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod download_security_tests {
-    use super::{sanitize_filename, safe_subfolder};
+    use super::{safe_subfolder, sanitize_filename};
 
     #[test]
     fn sanitize_strips_traversal_and_separators() {
@@ -67,9 +70,18 @@ mod download_security_tests {
 
     #[test]
     fn split_model_ref_handles_nested_and_plain_names() {
-        assert_eq!(super::split_model_ref("model.safetensors"), (String::new(), "model.safetensors".into()));
-        assert_eq!(super::split_model_ref("wan/model.gguf"), ("wan".into(), "model.gguf".into()));
-        assert_eq!(super::split_model_ref("a\\b\\m.pt"), ("a/b".into(), "m.pt".into()));
+        assert_eq!(
+            super::split_model_ref("model.safetensors"),
+            (String::new(), "model.safetensors".into())
+        );
+        assert_eq!(
+            super::split_model_ref("wan/model.gguf"),
+            ("wan".into(), "model.gguf".into())
+        );
+        assert_eq!(
+            super::split_model_ref("a\\b\\m.pt"),
+            ("a/b".into(), "m.pt".into())
+        );
         // Traversal segments survive the split and then die in safe_subfolder.
         let (dir, _) = super::split_model_ref("../../evil.bin");
         assert!(safe_subfolder(&dir).is_err());
@@ -90,9 +102,17 @@ fn split_model_ref(name: &str) -> (String, String) {
 /// The model subdirs LU downloads into / ComfyUI enumerates from. Delete
 /// searches exactly these — never custom_nodes, never arbitrary paths.
 const MODEL_SUBDIRS: &[&str] = &[
-    "checkpoints", "diffusion_models", "unet", "vae", "loras",
-    "text_encoders", "clip", "clip_vision", "audio_encoders",
-    "controlnet", "upscale_models",
+    "checkpoints",
+    "diffusion_models",
+    "unet",
+    "vae",
+    "loras",
+    "text_encoders",
+    "clip",
+    "clip_vision",
+    "audio_encoders",
+    "controlnet",
+    "upscale_models",
 ];
 
 /// Delete one installed model file from the ComfyUI models tree (the Model
@@ -101,7 +121,10 @@ const MODEL_SUBDIRS: &[&str] = &[
 /// ComfyUI enum entry; we jail-check it and look for the single file match
 /// across the known model subdirs.
 #[tauri::command]
-pub fn delete_comfy_model(filename: String, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub fn delete_comfy_model(
+    filename: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     let comfy_path = state
         .comfy_path
         .lock()
@@ -145,7 +168,9 @@ pub fn delete_comfy_model(filename: String, state: State<'_, AppState>) -> Resul
 }
 
 fn models_dir(comfy_path: &Option<String>, subfolder: &str) -> Result<PathBuf, String> {
-    let base = comfy_path.as_ref().ok_or("ComfyUI path not set. Please set it in settings or install ComfyUI first.")?;
+    let base = comfy_path
+        .as_ref()
+        .ok_or("ComfyUI path not set. Please set it in settings or install ComfyUI first.")?;
     safe_subfolder(subfolder)?;
     // Subfolders starting with "custom_nodes/" are relative to ComfyUI root, not models/
     let dir = if subfolder.starts_with("custom_nodes/") || subfolder.starts_with("custom_nodes\\") {
@@ -199,7 +224,9 @@ pub async fn download_model(
         };
 
         if file_complete {
-            return Ok(serde_json::json!({"status": "exists", "path": dest_file.to_string_lossy()}));
+            return Ok(
+                serde_json::json!({"status": "exists", "path": dest_file.to_string_lossy()}),
+            );
         }
         // File is incomplete — fall through to re-download (resume from partial)
     }
@@ -225,14 +252,17 @@ pub async fn download_model(
     // Initialize progress
     {
         let mut downloads = state.downloads.lock().unwrap();
-        downloads.insert(id.clone(), DownloadProgress {
-            progress: resume_offset,
-            total: 0,
-            speed: 0.0,
-            filename: filename.clone(),
-            status: "connecting".to_string(),
-            error: None,
-        });
+        downloads.insert(
+            id.clone(),
+            DownloadProgress {
+                progress: resume_offset,
+                total: 0,
+                speed: 0.0,
+                filename: filename.clone(),
+                status: "connecting".to_string(),
+                error: None,
+            },
+        );
     }
 
     let downloads_arc = Arc::clone(&state.downloads);
@@ -241,7 +271,16 @@ pub async fn download_model(
     let filename_clone = filename.clone();
 
     tokio::spawn(async move {
-        match do_download(&url, &dest_file, &downloads_arc, &id_clone, token, resume_offset).await {
+        match do_download(
+            &url,
+            &dest_file,
+            &downloads_arc,
+            &id_clone,
+            token,
+            resume_offset,
+        )
+        .await
+        {
             Ok(_) => {
                 if let Ok(mut dl) = downloads_arc.lock() {
                     if let Some(p) = dl.get_mut(&id_clone) {
@@ -462,7 +501,10 @@ pub fn pause_download(id: String, state: State<'_, AppState>) -> Result<serde_js
 }
 
 #[tauri::command]
-pub fn cancel_download(id: String, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub fn cancel_download(
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     // Cancel the token
     if let Ok(tokens) = state.download_tokens.lock() {
         if let Some(token) = tokens.get(&id) {
@@ -492,8 +534,18 @@ pub fn cancel_download(id: String, state: State<'_, AppState>) -> Result<serde_j
         if let Ok(comfy_path) = state.comfy_path.lock() {
             if let Some(ref path) = *comfy_path {
                 // Try common subfolders
-                for subfolder in &["diffusion_models", "checkpoints", "vae", "text_encoders", "loras"] {
-                    let tmp = PathBuf::from(path).join("models").join(subfolder).join(&id).with_extension("download");
+                for subfolder in &[
+                    "diffusion_models",
+                    "checkpoints",
+                    "vae",
+                    "text_encoders",
+                    "loras",
+                ] {
+                    let tmp = PathBuf::from(path)
+                        .join("models")
+                        .join(subfolder)
+                        .join(&id)
+                        .with_extension("download");
                     let _ = std::fs::remove_file(&tmp);
                 }
             }
@@ -538,14 +590,17 @@ pub async fn resume_download(
         if let Some(p) = downloads.get_mut(&id) {
             p.status = "connecting".to_string();
         } else {
-            downloads.insert(id.clone(), DownloadProgress {
-                progress: resume_offset,
-                total: 0,
-                speed: 0.0,
-                filename: id.clone(),
-                status: "connecting".to_string(),
-                error: None,
-            });
+            downloads.insert(
+                id.clone(),
+                DownloadProgress {
+                    progress: resume_offset,
+                    total: 0,
+                    speed: 0.0,
+                    filename: id.clone(),
+                    status: "connecting".to_string(),
+                    error: None,
+                },
+            );
         }
     }
 
@@ -554,7 +609,16 @@ pub async fn resume_download(
     let id_clone = id.clone();
 
     tokio::spawn(async move {
-        match do_download(&url, &dest_file, &downloads_arc, &id_clone, token, resume_offset).await {
+        match do_download(
+            &url,
+            &dest_file,
+            &downloads_arc,
+            &id_clone,
+            token,
+            resume_offset,
+        )
+        .await
+        {
             Ok(_) => {
                 if let Ok(mut dl) = downloads_arc.lock() {
                     if let Some(p) = dl.get_mut(&id_clone) {
@@ -624,9 +688,7 @@ pub fn detect_model_path(provider: String) -> Result<serde_json::Value, String> 
         }
         // Ollama manages its own blob store — treat as a pointer so LU can
         // later auto-create a Modelfile pointing at the downloaded GGUF.
-        "ollama" => vec![
-            home.join(".ollama").join("models"),
-        ],
+        "ollama" => vec![home.join(".ollama").join("models")],
         // LM Studio 0.3.x+ uses ~/.lmstudio/models (Windows/Mac/Linux).
         // Legacy 0.2.x used ~/.cache/lm-studio/models.
         "lm studio" | "lmstudio" => vec![
@@ -636,20 +698,25 @@ pub fn detect_model_path(provider: String) -> Result<serde_json::Value, String> 
         // Jan: modern installers on Windows write to %APPDATA%\Jan\data\models,
         // Mac/Linux fall back to ~/jan/models.
         "jan" => vec![
-            dirs::data_dir().unwrap_or_else(|| home.clone()).join("Jan").join("data").join("models"),
+            dirs::data_dir()
+                .unwrap_or_else(|| home.clone())
+                .join("Jan")
+                .join("data")
+                .join("models"),
             home.join(".jan").join("models"),
             home.join("jan").join("models"),
         ],
         // GPT4All: Windows ships %LOCALAPPDATA%\nomic.ai\GPT4All. Mac/Linux
         // use ~/.cache/gpt4all. We check both.
         "gpt4all" => vec![
-            dirs::data_local_dir().unwrap_or_else(|| home.clone()).join("nomic.ai").join("GPT4All"),
+            dirs::data_local_dir()
+                .unwrap_or_else(|| home.clone())
+                .join("nomic.ai")
+                .join("GPT4All"),
             home.join(".cache").join("gpt4all"),
         ],
         // LocalAI: single conventional path.
-        "localai" => vec![
-            home.join(".localai").join("models"),
-        ],
+        "localai" => vec![home.join(".localai").join("models")],
         // text-generation-webui (aka oobabooga): installs into its own folder,
         // no one-true-path. Check common locations.
         "oobabooga" | "text-generation-webui" | "tgw" => vec![
@@ -663,10 +730,9 @@ pub fn detect_model_path(provider: String) -> Result<serde_json::Value, String> 
         ],
         // llama.cpp: no managed dir — users typically keep GGUFs anywhere.
         // We default to ~/models (common convention when running server.sh).
-        "llama.cpp" | "llamacpp" | "llama-cpp" => vec![
-            home.join("models"),
-            home.join("llama.cpp").join("models"),
-        ],
+        "llama.cpp" | "llamacpp" | "llama-cpp" => {
+            vec![home.join("models"), home.join("llama.cpp").join("models")]
+        }
         // vLLM, SGLang, TabbyAPI, Aphrodite, TGI: all CLI-run, no conventional
         // dir. Fall through to LU's fallback.
         //
@@ -737,7 +803,9 @@ pub async fn download_model_to_path(
             _ => true,
         };
         if file_complete {
-            return Ok(serde_json::json!({"status": "exists", "path": dest_file.to_string_lossy()}));
+            return Ok(
+                serde_json::json!({"status": "exists", "path": dest_file.to_string_lossy()}),
+            );
         }
     }
 
@@ -756,14 +824,17 @@ pub async fn download_model_to_path(
     }
     {
         let mut downloads = state.downloads.lock().unwrap();
-        downloads.insert(id.clone(), DownloadProgress {
-            progress: resume_offset,
-            total: 0,
-            speed: 0.0,
-            filename: filename.clone(),
-            status: "connecting".to_string(),
-            error: None,
-        });
+        downloads.insert(
+            id.clone(),
+            DownloadProgress {
+                progress: resume_offset,
+                total: 0,
+                speed: 0.0,
+                filename: filename.clone(),
+                status: "connecting".to_string(),
+                error: None,
+            },
+        );
     }
 
     let downloads_arc = Arc::clone(&state.downloads);
@@ -772,7 +843,16 @@ pub async fn download_model_to_path(
     let filename_clone = filename.clone();
 
     tokio::spawn(async move {
-        match do_download(&url, &dest_file, &downloads_arc, &id_clone, token, resume_offset).await {
+        match do_download(
+            &url,
+            &dest_file,
+            &downloads_arc,
+            &id_clone,
+            token,
+            resume_offset,
+        )
+        .await
+        {
             Ok(_) => {
                 if let Ok(mut dl) = downloads_arc.lock() {
                     if let Some(p) = dl.get_mut(&id_clone) {

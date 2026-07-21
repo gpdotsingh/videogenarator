@@ -79,9 +79,7 @@ const IGNORE_DIRS: &[&str] = &[
 /// Source-file extensions we know how to parse imports from. Anything not
 /// in this list still appears in the walk (so the map isn't blind to it),
 /// but contributes only out-edges from neighbours that import it.
-const SOURCE_EXTS: &[&str] = &[
-    "ts", "tsx", "js", "jsx", "mjs", "cjs", "rs", "py", "go",
-];
+const SOURCE_EXTS: &[&str] = &["ts", "tsx", "js", "jsx", "mjs", "cjs", "rs", "py", "go"];
 
 /// Skip files larger than this for import parsing. Generated bundles,
 /// lockfiles, and minified blobs blow the regex out without contributing
@@ -101,13 +99,11 @@ static RE_TS_DYNAMIC: Lazy<Regex> =
 
 static RE_RS_USE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*use\s+(crate|super|self)::([A-Za-z0-9_:]+)").unwrap());
-static RE_RS_MOD: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^\s*(?:pub\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;").unwrap()
-});
+static RE_RS_MOD: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*(?:pub\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;").unwrap());
 
-static RE_PY_FROM: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^\s*from\s+(\.+)?([A-Za-z_][A-Za-z0-9_.]*)\s+import").unwrap()
-});
+static RE_PY_FROM: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*from\s+(\.+)?([A-Za-z_][A-Za-z0-9_.]*)\s+import").unwrap());
 static RE_PY_IMPORT: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?m)^\s*import\s+([A-Za-z_][A-Za-z0-9_.]*)").unwrap());
 
@@ -158,11 +154,7 @@ fn ext_of(path: &str) -> Option<&str> {
 /// a concrete repo-relative path if one exists in `files`. Non-relative
 /// specifiers (npm packages, bare names) return None — they're not in our
 /// graph by design.
-pub fn resolve_ts_import(
-    specifier: &str,
-    from: &str,
-    files: &HashSet<String>,
-) -> Option<String> {
+pub fn resolve_ts_import(specifier: &str, from: &str, files: &HashSet<String>) -> Option<String> {
     if !specifier.starts_with('.') {
         return None; // bare module — outside the repo graph
     }
@@ -206,7 +198,12 @@ pub fn normalize_rel(p: &Path) -> String {
 /// Maps a Rust `use crate::a::b::C` to the file `src/a/b.rs` or
 /// `src/a/b/mod.rs` if either exists. `from` is the rust file emitting
 /// the use — we use it to anchor `super::`/`self::` lookups.
-fn resolve_rust_use(prefix: &str, path: &str, from: &str, files: &HashSet<String>) -> Option<String> {
+fn resolve_rust_use(
+    prefix: &str,
+    path: &str,
+    from: &str,
+    files: &HashSet<String>,
+) -> Option<String> {
     // Strip everything after the last `::` (that's the item, not the file).
     let segments: Vec<&str> = path.split("::").collect();
     if segments.is_empty() {
@@ -351,8 +348,7 @@ pub fn parse_imports(file: &str, content: &str, files: &HashSet<String>) -> Hash
             }
             for cap in RE_PY_IMPORT.captures_iter(content) {
                 if let Some(m) = cap.get(1) {
-                    if let Some(resolved) = resolve_python_import(None, m.as_str(), file, files)
-                    {
+                    if let Some(resolved) = resolve_python_import(None, m.as_str(), file, files) {
                         out.insert(resolved);
                     }
                 }
@@ -376,8 +372,7 @@ pub fn pagerank(graph: &HashMap<String, HashSet<String>>) -> HashMap<String, f64
     let d = 0.85;
     let eps = 1e-6;
     let base = 1.0 / n as f64;
-    let mut score: HashMap<String, f64> =
-        graph.keys().map(|k| (k.clone(), base)).collect();
+    let mut score: HashMap<String, f64> = graph.keys().map(|k| (k.clone(), base)).collect();
 
     // Inbound adjacency for fast neighbour lookup during iteration.
     let mut inbound: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -547,11 +542,10 @@ async fn repo_map_impl(args: &Value) -> CmdResult {
         )));
     }
     let limit = a.limit.unwrap_or(20).clamp(1, 200);
-    let entries = tokio::task::spawn_blocking(move || {
-        build_repo_map(&root, a.query.as_deref(), limit)
-    })
-    .await
-    .map_err(|e| internal(format!("repo_map task: {}", e)))?;
+    let entries =
+        tokio::task::spawn_blocking(move || build_repo_map(&root, a.query.as_deref(), limit))
+            .await
+            .map_err(|e| internal(format!("repo_map task: {}", e)))?;
 
     Ok(json!({
         "files": entries.iter().map(|e| json!({
@@ -767,7 +761,10 @@ mod tests {
     fn limit_is_respected_and_capped() {
         let mut files = vec![];
         for i in 0..30 {
-            files.push((Box::leak(format!("src/f{}.ts", i).into_boxed_str()) as &str, ""));
+            files.push((
+                Box::leak(format!("src/f{}.ts", i).into_boxed_str()) as &str,
+                "",
+            ));
         }
         let dir = fixture(&files);
         let out = build_repo_map(dir.path(), None, 5);

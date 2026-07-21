@@ -378,6 +378,7 @@ export async function backendCall<T = any>(
     start_comfyui: { path: "/local-api/start-comfyui", method: "POST" },
     stop_comfyui: { path: "/local-api/stop-comfyui", method: "POST" },
     comfyui_status: { path: "/local-api/comfyui-status" },
+    archive_generated_video: { path: "/local-api/archive-generated-video", method: "POST" },
     find_comfyui: { path: "/local-api/find-comfyui" },
     set_comfyui_path: { path: "/local-api/set-comfyui-path", method: "POST" },
     install_comfyui: { path: "/local-api/install-comfyui", method: "POST" },

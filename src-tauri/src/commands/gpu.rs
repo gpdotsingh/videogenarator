@@ -59,7 +59,10 @@ fn detect_nvidia() -> Vec<DetectedGpu> {
     // is portable across Linux and Windows. Output line: "0, NVIDIA GeForce RTX 4070, 12282"
     let raw = match run_cmd(
         "nvidia-smi",
-        &["--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"],
+        &[
+            "--query-gpu=index,name,memory.total",
+            "--format=csv,noheader,nounits",
+        ],
     ) {
         Some(s) => s,
         None => return vec![],
@@ -67,7 +70,9 @@ fn detect_nvidia() -> Vec<DetectedGpu> {
     raw.lines()
         .filter_map(|line| {
             let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-            if parts.len() < 3 { return None }
+            if parts.len() < 3 {
+                return None;
+            }
             let index: u32 = parts[0].parse().ok()?;
             let name = parts[1].to_string();
             let memory_mib: Option<u64> = parts[2].parse().ok();
@@ -88,7 +93,16 @@ fn detect_amd() -> Vec<DetectedGpu> {
     // parse loosely. Format with `--showid --showproductname`:
     //   GPU[0] : Product Name: AMD Radeon RX 6800 XT
     //   GPU[0] : Memory: 16368 MiB
-    let raw = match run_cmd("rocm-smi", &["--showid", "--showproductname", "--showmeminfo", "vram", "--csv"]) {
+    let raw = match run_cmd(
+        "rocm-smi",
+        &[
+            "--showid",
+            "--showproductname",
+            "--showmeminfo",
+            "vram",
+            "--csv",
+        ],
+    ) {
         Some(s) => s,
         None => return vec![],
     };
@@ -97,9 +111,15 @@ fn detect_amd() -> Vec<DetectedGpu> {
     let mut lines = raw.lines().filter(|l| !l.trim().is_empty());
     if let Some(header) = lines.next() {
         let cols: Vec<&str> = header.split(',').map(|s| s.trim()).collect();
-        let card_col = cols.iter().position(|c| c.eq_ignore_ascii_case("device") || c.eq_ignore_ascii_case("card"));
-        let name_col = cols.iter().position(|c| c.to_lowercase().contains("product"));
-        let mem_col = cols.iter().position(|c| c.to_lowercase().contains("vram") && c.to_lowercase().contains("total"));
+        let card_col = cols
+            .iter()
+            .position(|c| c.eq_ignore_ascii_case("device") || c.eq_ignore_ascii_case("card"));
+        let name_col = cols
+            .iter()
+            .position(|c| c.to_lowercase().contains("product"));
+        let mem_col = cols
+            .iter()
+            .position(|c| c.to_lowercase().contains("vram") && c.to_lowercase().contains("total"));
         for line in lines {
             let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
             let index: u32 = card_col
@@ -143,14 +163,26 @@ fn detect_other_via_lspci() -> Vec<DetectedGpu> {
     let mut idx_intel: u32 = 0;
     for line in raw.lines() {
         let lower = line.to_lowercase();
-        if !(lower.contains("vga") || lower.contains("3d controller") || lower.contains("display controller")) { continue }
-        let vendor = if lower.contains("[8086:") { "intel" }
-                     else if lower.contains("[10de:") { "nvidia" }
-                     else if lower.contains("[1002:") { "amd" }
-                     else { "unknown" };
+        if !(lower.contains("vga")
+            || lower.contains("3d controller")
+            || lower.contains("display controller"))
+        {
+            continue;
+        }
+        let vendor = if lower.contains("[8086:") {
+            "intel"
+        } else if lower.contains("[10de:") {
+            "nvidia"
+        } else if lower.contains("[1002:") {
+            "amd"
+        } else {
+            "unknown"
+        };
         // Skip NVIDIA / AMD here because nvidia-smi / rocm-smi already
         // produce better entries with memory info.
-        if vendor == "nvidia" || vendor == "amd" { continue }
+        if vendor == "nvidia" || vendor == "amd" {
+            continue;
+        }
         // Extract the bracketed name (text between [...] just before the
         // vendor:device ID at the end).
         let name = line.split(':').last().unwrap_or(line).trim().to_string();
@@ -161,13 +193,17 @@ fn detect_other_via_lspci() -> Vec<DetectedGpu> {
             memory_mib: None,
             source: "lspci".into(),
         });
-        if vendor == "intel" { idx_intel += 1; }
+        if vendor == "intel" {
+            idx_intel += 1;
+        }
     }
     gpus
 }
 
 #[cfg(not(target_os = "linux"))]
-fn detect_other_via_lspci() -> Vec<DetectedGpu> { vec![] }
+fn detect_other_via_lspci() -> Vec<DetectedGpu> {
+    vec![]
+}
 
 #[cfg(target_os = "macos")]
 fn detect_macos() -> Vec<DetectedGpu> {
@@ -187,7 +223,9 @@ fn detect_macos() -> Vec<DetectedGpu> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn detect_macos() -> Vec<DetectedGpu> { vec![] }
+fn detect_macos() -> Vec<DetectedGpu> {
+    vec![]
+}
 
 #[cfg(target_os = "windows")]
 fn detect_other_via_wmic() -> Vec<DetectedGpu> {
@@ -196,7 +234,16 @@ fn detect_other_via_wmic() -> Vec<DetectedGpu> {
     // still on Win10/11 Home for the time being. We probe it but treat
     // failure as benign (the user can just not see the Intel card and pick
     // "auto" instead).
-    let raw = match run_cmd("wmic", &["path", "Win32_VideoController", "get", "Name,AdapterRAM", "/format:csv"]) {
+    let raw = match run_cmd(
+        "wmic",
+        &[
+            "path",
+            "Win32_VideoController",
+            "get",
+            "Name,AdapterRAM",
+            "/format:csv",
+        ],
+    ) {
         Some(s) => s,
         None => return vec![],
     };
@@ -210,17 +257,32 @@ fn detect_other_via_wmic() -> Vec<DetectedGpu> {
     for line in raw.lines().filter(|l| !l.trim().is_empty()).skip(1) {
         let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
         // Format: Node, AdapterRAM, Name
-        if parts.len() < 3 { continue }
+        if parts.len() < 3 {
+            continue;
+        }
         let ram_bytes: Option<u64> = parts[1].parse().ok();
         let name = parts[2].to_string();
-        if name.is_empty() || name.eq_ignore_ascii_case("name") { continue }
+        if name.is_empty() || name.eq_ignore_ascii_case("name") {
+            continue;
+        }
         let lname = name.to_lowercase();
-        let vendor = if lname.contains("intel") { "intel" }
-                     else if lname.contains("amd") || lname.contains("radeon") { "amd" }
-                     else if lname.contains("nvidia") || lname.contains("geforce") || lname.contains("rtx") || lname.contains("gtx") { "nvidia" }
-                     else { "unknown" };
+        let vendor = if lname.contains("intel") {
+            "intel"
+        } else if lname.contains("amd") || lname.contains("radeon") {
+            "amd"
+        } else if lname.contains("nvidia")
+            || lname.contains("geforce")
+            || lname.contains("rtx")
+            || lname.contains("gtx")
+        {
+            "nvidia"
+        } else {
+            "unknown"
+        };
         // Skip NVIDIA / AMD here — nvidia-smi / rocm-smi produce better entries with memory.total
-        if vendor == "nvidia" || vendor == "amd" { continue }
+        if vendor == "nvidia" || vendor == "amd" {
+            continue;
+        }
         gpus.push(DetectedGpu {
             index: idx,
             vendor: vendor.into(),
@@ -234,7 +296,9 @@ fn detect_other_via_wmic() -> Vec<DetectedGpu> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn detect_other_via_wmic() -> Vec<DetectedGpu> { vec![] }
+fn detect_other_via_wmic() -> Vec<DetectedGpu> {
+    vec![]
+}
 
 #[tauri::command]
 pub fn detect_gpus() -> Result<Vec<DetectedGpu>, String> {
@@ -258,7 +322,10 @@ pub struct GpuSelection {
 }
 
 #[tauri::command]
-pub fn set_gpu_selection(state: State<'_, AppState>, selection: GpuSelection) -> Result<(), String> {
+pub fn set_gpu_selection(
+    state: State<'_, AppState>,
+    selection: GpuSelection,
+) -> Result<(), String> {
     let mut sel = state.gpu_selection.lock().map_err(|e| e.to_string())?;
     *sel = selection;
     Ok(())
@@ -275,10 +342,19 @@ pub fn get_gpu_selection(state: State<'_, AppState>) -> Result<GpuSelection, Str
 /// to driver-decided device order, which is the previous (pre-v2.5.0)
 /// behaviour.
 pub fn apply_gpu_env(cmd: &mut Command, selection: &GpuSelection) {
-    if selection.indices.is_empty() { return }
-    let csv: String = selection.indices.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+    if selection.indices.is_empty() {
+        return;
+    }
+    let csv: String = selection
+        .indices
+        .iter()
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
     match selection.vendor.as_str() {
-        "nvidia" => { cmd.env("CUDA_VISIBLE_DEVICES", &csv); }
+        "nvidia" => {
+            cmd.env("CUDA_VISIBLE_DEVICES", &csv);
+        }
         "amd" => {
             // HIP_VISIBLE_DEVICES is the official ROCm name; ROCR_VISIBLE_DEVICES
             // is the lower-level Runtime equivalent that some older builds
@@ -289,7 +365,12 @@ pub fn apply_gpu_env(cmd: &mut Command, selection: &GpuSelection) {
         "intel" => {
             // SYCL / oneAPI selector. Format: "level_zero:0,1" or "opencl:0".
             // We default to level_zero which is what Intel's IPEX-LLM uses.
-            let sycl: String = selection.indices.iter().map(|i| format!("level_zero:{}", i)).collect::<Vec<_>>().join(",");
+            let sycl: String = selection
+                .indices
+                .iter()
+                .map(|i| format!("level_zero:{}", i))
+                .collect::<Vec<_>>()
+                .join(",");
             cmd.env("ONEAPI_DEVICE_SELECTOR", &sycl);
         }
         _ => {} // auto / unknown — leave env untouched
@@ -298,7 +379,10 @@ pub fn apply_gpu_env(cmd: &mut Command, selection: &GpuSelection) {
 
 impl Default for GpuSelection {
     fn default() -> Self {
-        GpuSelection { vendor: "auto".into(), indices: vec![] }
+        GpuSelection {
+            vendor: "auto".into(),
+            indices: vec![],
+        }
     }
 }
 
@@ -308,37 +392,61 @@ mod tests {
 
     #[test]
     fn apply_gpu_env_sets_cuda_for_nvidia() {
-        let sel = GpuSelection { vendor: "nvidia".into(), indices: vec![1, 2] };
+        let sel = GpuSelection {
+            vendor: "nvidia".into(),
+            indices: vec![1, 2],
+        };
         let mut cmd = Command::new("echo");
         apply_gpu_env(&mut cmd, &sel);
         // We can inspect envs via get_envs (Rust 1.69+).
-        let has_cuda = cmd.get_envs().any(|(k, v)| k == "CUDA_VISIBLE_DEVICES" && v.map(|s| s == "1,2").unwrap_or(false));
+        let has_cuda = cmd
+            .get_envs()
+            .any(|(k, v)| k == "CUDA_VISIBLE_DEVICES" && v.map(|s| s == "1,2").unwrap_or(false));
         assert!(has_cuda, "CUDA_VISIBLE_DEVICES should be set to 1,2");
     }
 
     #[test]
     fn apply_gpu_env_sets_hip_and_rocr_for_amd() {
-        let sel = GpuSelection { vendor: "amd".into(), indices: vec![0] };
+        let sel = GpuSelection {
+            vendor: "amd".into(),
+            indices: vec![0],
+        };
         let mut cmd = Command::new("echo");
         apply_gpu_env(&mut cmd, &sel);
-        let hip = cmd.get_envs().any(|(k, v)| k == "HIP_VISIBLE_DEVICES" && v.map(|s| s == "0").unwrap_or(false));
-        let rocr = cmd.get_envs().any(|(k, v)| k == "ROCR_VISIBLE_DEVICES" && v.map(|s| s == "0").unwrap_or(false));
+        let hip = cmd
+            .get_envs()
+            .any(|(k, v)| k == "HIP_VISIBLE_DEVICES" && v.map(|s| s == "0").unwrap_or(false));
+        let rocr = cmd
+            .get_envs()
+            .any(|(k, v)| k == "ROCR_VISIBLE_DEVICES" && v.map(|s| s == "0").unwrap_or(false));
         assert!(hip, "HIP_VISIBLE_DEVICES should be set");
         assert!(rocr, "ROCR_VISIBLE_DEVICES should be set");
     }
 
     #[test]
     fn apply_gpu_env_sets_oneapi_for_intel() {
-        let sel = GpuSelection { vendor: "intel".into(), indices: vec![0, 1] };
+        let sel = GpuSelection {
+            vendor: "intel".into(),
+            indices: vec![0, 1],
+        };
         let mut cmd = Command::new("echo");
         apply_gpu_env(&mut cmd, &sel);
-        let sycl = cmd.get_envs().any(|(k, v)| k == "ONEAPI_DEVICE_SELECTOR" && v.map(|s| s == "level_zero:0,level_zero:1").unwrap_or(false));
-        assert!(sycl, "ONEAPI_DEVICE_SELECTOR should be set to level_zero:0,level_zero:1");
+        let sycl = cmd.get_envs().any(|(k, v)| {
+            k == "ONEAPI_DEVICE_SELECTOR"
+                && v.map(|s| s == "level_zero:0,level_zero:1").unwrap_or(false)
+        });
+        assert!(
+            sycl,
+            "ONEAPI_DEVICE_SELECTOR should be set to level_zero:0,level_zero:1"
+        );
     }
 
     #[test]
     fn apply_gpu_env_is_noop_when_auto() {
-        let sel = GpuSelection { vendor: "auto".into(), indices: vec![1] };
+        let sel = GpuSelection {
+            vendor: "auto".into(),
+            indices: vec![1],
+        };
         let mut cmd = Command::new("echo");
         apply_gpu_env(&mut cmd, &sel);
         // "auto" doesn't match any vendor branch — env should be empty (no GPU vars)
@@ -351,7 +459,10 @@ mod tests {
 
     #[test]
     fn apply_gpu_env_is_noop_when_indices_empty() {
-        let sel = GpuSelection { vendor: "nvidia".into(), indices: vec![] };
+        let sel = GpuSelection {
+            vendor: "nvidia".into(),
+            indices: vec![],
+        };
         let mut cmd = Command::new("echo");
         apply_gpu_env(&mut cmd, &sel);
         let any_gpu_env = cmd.get_envs().any(|(k, _)| {

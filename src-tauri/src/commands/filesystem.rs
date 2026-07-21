@@ -12,7 +12,9 @@ use walkdir::WalkDir;
 /// the full rationale — same bug surface for fs_list / fs_search.
 fn normalize_duplicate_drive_prefix(path: &str) -> String {
     let bytes = path.as_bytes();
-    if bytes.len() < 3 { return path.to_string(); }
+    if bytes.len() < 3 {
+        return path.to_string();
+    }
     let mut last_drive_idx: Option<usize> = None;
     let mut i = 1;
     while i + 1 < bytes.len() {
@@ -38,7 +40,9 @@ fn lexical_normalize(p: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for comp in p.components() {
         match comp {
-            Component::ParentDir => { out.pop(); }
+            Component::ParentDir => {
+                out.pop();
+            }
             Component::CurDir => {}
             other => out.push(other.as_os_str()),
         }
@@ -70,7 +74,9 @@ pub(crate) fn contain_within(root: &Path, candidate: &Path) -> Result<PathBuf, S
             c == r || c.starts_with(&format!("{}/", r))
         }
         #[cfg(not(windows))]
-        { ncand == nroot || ncand.starts_with(&nroot) }
+        {
+            ncand == nroot || ncand.starts_with(&nroot)
+        }
     };
     if within {
         Ok(ncand)
@@ -116,10 +122,23 @@ pub(crate) fn workspace_root(chat_id: Option<&str>, working_dir: Option<&str>) -
     let safe: String = id
         .chars()
         .take(64)
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
-    let slug = if safe.is_empty() { "default".to_string() } else { safe };
-    dirs::home_dir().unwrap_or_default().join("agent-workspace").join(slug)
+    let slug = if safe.is_empty() {
+        "default".to_string()
+    } else {
+        safe
+    };
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join("agent-workspace")
+        .join(slug)
 }
 
 /// Resolve + CONTAIN a tool-call path. A relative path resolves against the
@@ -127,11 +146,19 @@ pub(crate) fn workspace_root(chat_id: Option<&str>, working_dir: Option<&str>) -
 /// absolute path is accepted only when it falls inside that root. Returns an
 /// error on any escape (`..`, an out-of-root absolute path, etc.) — the
 /// security boundary for fs_read/fs_write/fs_list/fs_search/fs_info.
-fn resolve_path(path: &str, chat_id: Option<&str>, working_dir: Option<&str>) -> Result<PathBuf, String> {
+fn resolve_path(
+    path: &str,
+    chat_id: Option<&str>,
+    working_dir: Option<&str>,
+) -> Result<PathBuf, String> {
     let cleaned = normalize_duplicate_drive_prefix(path);
     let root = workspace_root(chat_id, working_dir);
     let p = Path::new(&cleaned);
-    let candidate = if p.is_absolute() { p.to_path_buf() } else { root.join(&cleaned) };
+    let candidate = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        root.join(&cleaned)
+    };
     contain_within(&root, &candidate)
 }
 
@@ -169,7 +196,11 @@ fn file_meta(path: &Path) -> serde_json::Value {
 
 #[tauri::command]
 #[allow(non_snake_case)]
-pub fn fs_read(path: String, chatId: Option<String>, workingDirectory: Option<String>) -> Result<serde_json::Value, String> {
+pub fn fs_read(
+    path: String,
+    chatId: Option<String>,
+    workingDirectory: Option<String>,
+) -> Result<serde_json::Value, String> {
     let full = resolve_path(&path, chatId.as_deref(), workingDirectory.as_deref())?;
     if !full.exists() {
         return Err(format!("File not found: {}", full.display()));
@@ -188,7 +219,12 @@ pub fn fs_read(path: String, chatId: Option<String>, workingDirectory: Option<St
 
 #[tauri::command]
 #[allow(non_snake_case)]
-pub fn fs_write(path: String, content: String, chatId: Option<String>, workingDirectory: Option<String>) -> Result<serde_json::Value, String> {
+pub fn fs_write(
+    path: String,
+    content: String,
+    chatId: Option<String>,
+    workingDirectory: Option<String>,
+) -> Result<serde_json::Value, String> {
     let full = resolve_path(&path, chatId.as_deref(), workingDirectory.as_deref())?;
     if let Some(parent) = full.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Create dir: {}", e))?;
@@ -238,7 +274,11 @@ pub fn fs_list(
             }
         }
     } else if recursive.unwrap_or(false) {
-        for entry in WalkDir::new(&dir).max_depth(5).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(&dir)
+            .max_depth(5)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             if entries.len() >= max_entries {
                 break;
             }
@@ -282,7 +322,11 @@ pub fn fs_search(
     let max = max_results.unwrap_or(50) as usize;
     let mut results: Vec<serde_json::Value> = Vec::new();
 
-    for entry in WalkDir::new(&dir).max_depth(8).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(&dir)
+        .max_depth(8)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         if results.len() >= max {
             break;
         }
@@ -326,7 +370,11 @@ pub fn fs_search(
 
 #[tauri::command]
 #[allow(non_snake_case)]
-pub fn fs_info(path: String, chatId: Option<String>, workingDirectory: Option<String>) -> Result<serde_json::Value, String> {
+pub fn fs_info(
+    path: String,
+    chatId: Option<String>,
+    workingDirectory: Option<String>,
+) -> Result<serde_json::Value, String> {
     let full = resolve_path(&path, chatId.as_deref(), workingDirectory.as_deref())?;
     if !full.exists() {
         return Err(format!("Path not found: {}", full.display()));
@@ -412,7 +460,10 @@ pub async fn save_binary_file_dialog(
     let default_name = defaultName.unwrap_or_else(|| "download.bin".to_string());
     let ext = extension.unwrap_or_else(|| {
         // Infer from defaultName if caller didn't tell us — cheap split.
-        default_name.rsplit_once('.').map(|(_, e)| e.to_string()).unwrap_or_else(|| "bin".to_string())
+        default_name
+            .rsplit_once('.')
+            .map(|(_, e)| e.to_string())
+            .unwrap_or_else(|| "bin".to_string())
     });
     let label = ext_label.unwrap_or_else(|| format!("{} file", ext.to_uppercase()));
 
@@ -487,7 +538,11 @@ mod tests {
 
     #[test]
     fn absolute_path_outside_working_dir_is_rejected() {
-        let abs = if cfg!(windows) { "C:/Windows/System32/x.txt" } else { "/etc/passwd" };
+        let abs = if cfg!(windows) {
+            "C:/Windows/System32/x.txt"
+        } else {
+            "/etc/passwd"
+        };
         assert!(resolve_path(abs, Some("chat-1"), Some("D:/Projects/site")).is_err());
     }
 
@@ -510,8 +565,12 @@ mod tests {
     #[test]
     fn verbatim_prefixed_root_allows_browsing_itself() {
         // FileTree browse passes path == workingDirectory == the picked folder.
-        let got = resolve_path(r"\\?\D:\Projects\site", Some("c"), Some(r"\\?\D:\Projects\site"))
-            .expect("verbatim root must contain itself");
+        let got = resolve_path(
+            r"\\?\D:\Projects\site",
+            Some("c"),
+            Some(r"\\?\D:\Projects\site"),
+        )
+        .expect("verbatim root must contain itself");
         let s = got.to_string_lossy().to_lowercase().replace('\\', "/");
         assert!(s.ends_with("d:/projects/site"), "got: {}", s);
     }
@@ -529,8 +588,12 @@ mod tests {
     #[test]
     fn absolute_op_under_verbatim_root_is_allowed() {
         // The agent addresses files with plain absolute paths; the root is verbatim.
-        let got = resolve_path(r"D:\Projects\site\README.md", Some("c"), Some(r"\\?\D:\Projects\site"))
-            .expect("plain absolute inside a verbatim root must be allowed");
+        let got = resolve_path(
+            r"D:\Projects\site\README.md",
+            Some("c"),
+            Some(r"\\?\D:\Projects\site"),
+        )
+        .expect("plain absolute inside a verbatim root must be allowed");
         let s = got.to_string_lossy().to_lowercase().replace('\\', "/");
         assert!(s.ends_with("d:/projects/site/readme.md"), "got: {}", s);
     }
@@ -539,7 +602,17 @@ mod tests {
     #[test]
     fn verbatim_root_still_rejects_escape() {
         // Normalizing the prefix must not weaken the jail.
-        assert!(resolve_path(r"..\..\secret.txt", Some("c"), Some(r"\\?\D:\Projects\site")).is_err());
-        assert!(resolve_path(r"C:\Windows\System32\x.txt", Some("c"), Some(r"\\?\D:\Projects\site")).is_err());
+        assert!(resolve_path(
+            r"..\..\secret.txt",
+            Some("c"),
+            Some(r"\\?\D:\Projects\site")
+        )
+        .is_err());
+        assert!(resolve_path(
+            r"C:\Windows\System32\x.txt",
+            Some("c"),
+            Some(r"\\?\D:\Projects\site")
+        )
+        .is_err());
     }
 }

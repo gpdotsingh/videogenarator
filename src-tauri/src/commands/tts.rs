@@ -33,7 +33,9 @@ pub const PIPER_VOICE: &str = "en_US-lessac-medium";
 fn is_valid_voice(voice: &str) -> bool {
     !voice.is_empty()
         && voice.len() < 64
-        && voice.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        && voice
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 fn piper_voices_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -46,7 +48,10 @@ fn piper_voices_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 /// `(model.onnx, model.onnx.json)` for a voice id under the piper_voices dir.
-pub fn piper_voice_paths(app: &tauri::AppHandle, voice: &str) -> Result<(PathBuf, PathBuf), String> {
+pub fn piper_voice_paths(
+    app: &tauri::AppHandle,
+    voice: &str,
+) -> Result<(PathBuf, PathBuf), String> {
     let dir = piper_voices_dir(app)?;
     Ok((
         dir.join(format!("{}.onnx", voice)),
@@ -57,7 +62,10 @@ pub fn piper_voice_paths(app: &tauri::AppHandle, voice: &str) -> Result<(PathBuf
 /// Whether neural TTS is usable: the `piper` package is installed AND a voice
 /// model is present. The Settings badge + the chat SpeakerButton gate on this.
 #[tauri::command]
-pub fn tts_status(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+pub fn tts_status(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
     let python = crate::commands::install::resolve_lu_python(state.inner());
 
     let mut piper_importable = false;
@@ -150,9 +158,14 @@ pub fn download_voice(
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
 
-    let output = cmd.output().map_err(|e| format!("could not start voice download: {}", e))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("could not start voice download: {}", e))?;
     if !output.status.success() {
-        return Err(format!("voice download failed: {}", String::from_utf8_lossy(&output.stderr)));
+        return Err(format!(
+            "voice download failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
     let (onnx, _) = piper_voice_paths(&app, &voice)?;
     if !onnx.exists() {
@@ -217,7 +230,9 @@ pub fn synthesize(
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
 
-    let mut child = cmd.spawn().map_err(|e| format!("Failed to start piper: {}", e))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to start piper: {}", e))?;
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(text.as_bytes());
         // dropped at end of block → stdin closed so piper proceeds
@@ -268,10 +283,16 @@ pub async fn synthesize_external(
 
     // Light validation only — must be a well-formed http(s) URL. Localhost/LAN
     // is allowed on purpose (see the SSRF note above).
-    let parsed = url::Url::parse(url.trim()).map_err(|e| format!("invalid TTS endpoint URL: {}", e))?;
+    let parsed =
+        url::Url::parse(url.trim()).map_err(|e| format!("invalid TTS endpoint URL: {}", e))?;
     match parsed.scheme() {
         "http" | "https" => {}
-        other => return Err(format!("TTS endpoint must be http or https, got '{}'", other)),
+        other => {
+            return Err(format!(
+                "TTS endpoint must be http or https, got '{}'",
+                other
+            ))
+        }
     }
 
     // OpenAI-compatible engines require a voice. Default to OpenAI's "alloy";

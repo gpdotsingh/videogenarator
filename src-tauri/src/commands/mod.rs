@@ -1,11 +1,11 @@
 pub mod agent;
 pub mod bg_tasks;
-pub mod repo_map;
 pub mod claude_code;
 pub mod comfy_ws;
 pub mod download;
 pub mod engine;
 pub mod filesystem;
+pub mod generated_video;
 pub mod gpu;
 pub mod health;
 pub mod install;
@@ -13,6 +13,7 @@ pub mod oauth;
 pub mod process;
 pub mod proxy;
 pub mod remote;
+pub mod repo_map;
 pub mod search;
 pub mod secret;
 pub mod shell;
@@ -34,8 +35,14 @@ pub mod whisper;
 pub type CmdResult = Result<serde_json::Value, String>;
 
 #[allow(dead_code)]
-pub fn internal(msg: impl Into<String>) -> String { msg.into() }
+pub fn internal(msg: impl Into<String>) -> String {
+    msg.into()
+}
 #[allow(dead_code)]
-pub fn bad_request(msg: impl Into<String>) -> String { msg.into() }
+pub fn bad_request(msg: impl Into<String>) -> String {
+    msg.into()
+}
 #[allow(dead_code)]
-pub fn not_found(msg: impl Into<String>) -> String { msg.into() }
+pub fn not_found(msg: impl Into<String>) -> String {
+    msg.into()
+}

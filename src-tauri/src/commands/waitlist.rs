@@ -45,10 +45,7 @@ fn looks_like_email(email: &str) -> bool {
         return false;
     }
     let domain = &email[at + 1..];
-    domain.len() >= 3
-        && domain.contains('.')
-        && !domain.starts_with('.')
-        && !domain.ends_with('.')
+    domain.len() >= 3 && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
 }
 
 /// Submit one opt-in email to the hosted-workflows waitlist.

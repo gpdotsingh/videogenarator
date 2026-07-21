@@ -45,14 +45,23 @@ const MUSUBI_TAG: &str = "v0.3.4";
 /// circulating NSFW full finetunes are ComfyUI-saved with a
 /// `model.diffusion_model.` key prefix that musubi's strict loader rejects
 /// (verified against zimage_model.py, 2026-07-18).
-const DIT_CANDIDATES: &[&str] = &["z_image_bf16.safetensors", "z_image_de_turbo_v1_bf16.safetensors"];
+const DIT_CANDIDATES: &[&str] = &[
+    "z_image_bf16.safetensors",
+    "z_image_de_turbo_v1_bf16.safetensors",
+];
 const TE_CANDIDATES: &[&str] = &["qwen_3_4b.safetensors"];
 const VAE_CANDIDATES: &[&str] = &["ae.safetensors"];
 
 fn sanitize_component(s: &str) -> String {
     let cleaned: String = s
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     cleaned.trim_matches('_').chars().take(48).collect()
 }
@@ -69,14 +78,19 @@ fn read_config_value(key: &str) -> Option<String> {
 }
 
 fn write_config_value(key: &str, value: &str) {
-    let Some(path) = config_json_path() else { return };
+    let Some(path) = config_json_path() else {
+        return;
+    };
     let _ = fs::create_dir_all(path.parent().unwrap_or(Path::new(".")));
     let mut json: serde_json::Value = fs::read_to_string(&path)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_else(|| serde_json::json!({}));
     json[key] = serde_json::json!(value);
-    let _ = fs::write(&path, serde_json::to_string_pretty(&json).unwrap_or_default());
+    let _ = fs::write(
+        &path,
+        serde_json::to_string_pretty(&json).unwrap_or_default(),
+    );
 }
 
 /// Trainer root: persisted override (config `trainer_root`) else
@@ -96,9 +110,13 @@ fn trainer_root(app: &tauri::AppHandle) -> PathBuf {
 
 fn venv_python(root: &Path) -> PathBuf {
     #[cfg(target_os = "windows")]
-    { root.join("venv").join("Scripts").join("python.exe") }
+    {
+        root.join("venv").join("Scripts").join("python.exe")
+    }
     #[cfg(not(target_os = "windows"))]
-    { root.join("venv").join("bin").join("python") }
+    {
+        root.join("venv").join("bin").join("python")
+    }
 }
 
 fn repo_dir(root: &Path) -> PathBuf {
@@ -124,7 +142,12 @@ fn set_status(state: &Arc<Mutex<crate::state::InstallState>>, status: &str, msg:
 
 /// Resolve a base-model file by exact name: `<root>/models` first, then the
 /// active ComfyUI models tree (so files pulled via the Model Manager count).
-fn resolve_base_file(root: &Path, comfy_dir: Option<&Path>, names: &[&str], sub: &str) -> Option<PathBuf> {
+fn resolve_base_file(
+    root: &Path,
+    comfy_dir: Option<&Path>,
+    names: &[&str],
+    sub: &str,
+) -> Option<PathBuf> {
     for n in names {
         let local = root.join("models").join(n);
         if local.exists() {
@@ -169,8 +192,14 @@ fn run_streamed(
     let tail: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let mut handles = Vec::new();
     for stream in [
-        child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-        child.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+        child
+            .stdout
+            .take()
+            .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+        child
+            .stderr
+            .take()
+            .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
     ]
     .into_iter()
     .flatten()
@@ -227,10 +256,7 @@ fn run_streamed(
     if exit.success() {
         Ok(())
     } else {
-        let last = tail
-            .lock()
-            .map(|t| t.join("\n"))
-            .unwrap_or_default();
+        let last = tail.lock().map(|t| t.join("\n")).unwrap_or_default();
         Err(format!("{label} failed (exit {:?}).\n{last}", exit.code()))
     }
 }
@@ -255,7 +281,10 @@ pub fn parse_step_counter(line: &str) -> Option<(u64, u64)> {
         if left_start >= i || right_end <= i + 1 {
             continue;
         }
-        if let (Ok(cur), Ok(total)) = (line[left_start..i].parse::<u64>(), line[i + 1..right_end].parse::<u64>()) {
+        if let (Ok(cur), Ok(total)) = (
+            line[left_start..i].parse::<u64>(),
+            line[i + 1..right_end].parse::<u64>(),
+        ) {
             if total >= 10 && cur <= total {
                 return Some((cur, total));
             }
@@ -280,7 +309,8 @@ pub fn install_character_trainer(
         }
         st.status = "installing".to_string();
         st.logs.clear();
-        st.logs.push("Setting up the local character trainer...".to_string());
+        st.logs
+            .push("Setting up the local character trainer...".to_string());
     }
     info!("character trainer install start");
 
@@ -310,49 +340,118 @@ pub fn install_character_trainer(
 
         // 1) pinned clone (releases are the project's own stability advice)
         if !repo_dir(&root).join(".git").exists() {
-            set_status(&install, "installing", &format!("Step 1/4: Getting musubi tuner {MUSUBI_TAG}..."));
+            set_status(
+                &install,
+                "installing",
+                &format!("Step 1/4: Getting musubi tuner {MUSUBI_TAG}..."),
+            );
             let mut clone = Command::new("git");
-            clone.args(["clone", "--branch", MUSUBI_TAG, "--depth", "1", MUSUBI_REPO])
+            clone
+                .args(["clone", "--branch", MUSUBI_TAG, "--depth", "1", MUSUBI_REPO])
                 .arg(repo_dir(&root));
             if let Err(e) = run_streamed(clone, "git clone", &install, &cancel, &pid_slot) {
-                set_status(&install, if e == "cancelled" { "cancelled" } else { "error" }, &e);
+                set_status(
+                    &install,
+                    if e == "cancelled" {
+                        "cancelled"
+                    } else {
+                        "error"
+                    },
+                    &e,
+                );
                 return;
             }
         } else {
-            push_log(&install, "musubi tuner already present, keeping the pinned checkout.");
+            push_log(
+                &install,
+                "musubi tuner already present, keeping the pinned checkout.",
+            );
         }
 
         // 2) venv
         if !venv_python(&root).exists() {
-            set_status(&install, "installing", "Step 2/4: Creating the training environment (venv)...");
+            set_status(
+                &install,
+                "installing",
+                "Step 2/4: Creating the training environment (venv)...",
+            );
             let mut venv = Command::new(&python_bin);
             venv.args(["-m", "venv"]).arg(root.join("venv"));
             if let Err(e) = run_streamed(venv, "venv create", &install, &cancel, &pid_slot) {
-                set_status(&install, if e == "cancelled" { "cancelled" } else { "error" }, &e);
+                set_status(
+                    &install,
+                    if e == "cancelled" {
+                        "cancelled"
+                    } else {
+                        "error"
+                    },
+                    &e,
+                );
                 return;
             }
         }
         let vpy = venv_python(&root).to_string_lossy().to_string();
 
         // 3) torch (cu121 wheels run on every driver the app supports)
-        set_status(&install, "installing", "Step 3/4: Installing PyTorch into the trainer venv (~2.5 GB, one time)...");
+        set_status(
+            &install,
+            "installing",
+            "Step 3/4: Installing PyTorch into the trainer venv (~2.5 GB, one time)...",
+        );
         let mut torch = Command::new(&vpy);
         torch.args([
-            "-m", "pip", "install", "--progress-bar", "off", "--no-input",
-            "torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cu121",
+            "-m",
+            "pip",
+            "install",
+            "--progress-bar",
+            "off",
+            "--no-input",
+            "torch",
+            "torchvision",
+            "--index-url",
+            "https://download.pytorch.org/whl/cu121",
         ]);
         if let Err(e) = run_streamed(torch, "torch install", &install, &cancel, &pid_slot) {
-            set_status(&install, if e == "cancelled" { "cancelled" } else { "error" }, &e);
+            set_status(
+                &install,
+                if e == "cancelled" {
+                    "cancelled"
+                } else {
+                    "error"
+                },
+                &e,
+            );
             return;
         }
 
         // 4) musubi + deps
-        set_status(&install, "installing", "Step 4/4: Installing the trainer package...");
+        set_status(
+            &install,
+            "installing",
+            "Step 4/4: Installing the trainer package...",
+        );
         let mut pkg = Command::new(&vpy);
-        pkg.args(["-m", "pip", "install", "--progress-bar", "off", "--no-input", "-e", "."])
-            .current_dir(repo_dir(&root));
+        pkg.args([
+            "-m",
+            "pip",
+            "install",
+            "--progress-bar",
+            "off",
+            "--no-input",
+            "-e",
+            ".",
+        ])
+        .current_dir(repo_dir(&root));
         if let Err(e) = run_streamed(pkg, "musubi install", &install, &cancel, &pid_slot) {
-            set_status(&install, if e == "cancelled" { "cancelled" } else { "error" }, &e);
+            set_status(
+                &install,
+                if e == "cancelled" {
+                    "cancelled"
+                } else {
+                    "error"
+                },
+                &e,
+            );
             return;
         }
 
@@ -397,7 +496,11 @@ pub fn stage_training_image(
     caption: String,
 ) -> Result<serde_json::Value, String> {
     let set = sanitize_component(&setId);
-    let name = sanitize_component(filename.trim_end_matches(|c: char| c.is_ascii_alphanumeric()).trim_end_matches('.'));
+    let name = sanitize_component(
+        filename
+            .trim_end_matches(|c: char| c.is_ascii_alphanumeric())
+            .trim_end_matches('.'),
+    );
     if set.is_empty() {
         return Err("invalid set id".to_string());
     }
@@ -414,7 +517,11 @@ pub fn stage_training_image(
     }
     let img_dir = trainer_root(&app).join("train").join(&set).join("img");
     fs::create_dir_all(&img_dir).map_err(|e| format!("could not create the set dir: {e}"))?;
-    let stem = if name.is_empty() { format!("photo_{}", fileBytes.len() % 100000) } else { name };
+    let stem = if name.is_empty() {
+        format!("photo_{}", fileBytes.len() % 100000)
+    } else {
+        name
+    };
     fs::write(img_dir.join(format!("{stem}.{ext}")), &fileBytes)
         .map_err(|e| format!("could not write the photo: {e}"))?;
     // Caption sidecar: trigger word comes first — musubi has no trigger
@@ -467,7 +574,11 @@ pub fn start_character_training(
     let lora_name = sanitize_component(&name);
     let trigger = sanitize_component(&triggerWord);
     if set.is_empty() || lora_name.is_empty() || trigger.is_empty() {
-        set_status(&state.trainer_run, "error", "Set, name and trigger word are required.");
+        set_status(
+            &state.trainer_run,
+            "error",
+            "Set, name and trigger word are required.",
+        );
         return Err("invalid arguments".to_string());
     }
     let steps = steps.unwrap_or(1200).clamp(100, 4000);
@@ -476,7 +587,11 @@ pub fn start_character_training(
     let comfy = active_comfy_dir(state.inner());
     let vpy = venv_python(&root);
     if !vpy.exists() {
-        set_status(&state.trainer_run, "error", "Trainer environment is missing. Run the trainer install first.");
+        set_status(
+            &state.trainer_run,
+            "error",
+            "Trainer environment is missing. Run the trainer install first.",
+        );
         return Err("trainer_not_installed".to_string());
     }
     let (Some(dit), Some(te), Some(vae)) = (
@@ -493,14 +608,27 @@ pub fn start_character_training(
     };
     let img_dir = root.join("train").join(&set).join("img");
     let photo_count = fs::read_dir(&img_dir)
-        .map(|it| it.filter_map(Result::ok).filter(|e| {
-            e.path().extension().and_then(|x| x.to_str())
-                .map(|x| ["png", "jpg", "jpeg", "webp"].contains(&x.to_ascii_lowercase().as_str()))
-                .unwrap_or(false)
-        }).count())
+        .map(|it| {
+            it.filter_map(Result::ok)
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .and_then(|x| x.to_str())
+                        .map(|x| {
+                            ["png", "jpg", "jpeg", "webp"]
+                                .contains(&x.to_ascii_lowercase().as_str())
+                        })
+                        .unwrap_or(false)
+                })
+                .count()
+        })
         .unwrap_or(0);
     if photo_count < 4 {
-        set_status(&state.trainer_run, "error", "Need at least 4 staged photos to train.");
+        set_status(
+            &state.trainer_run,
+            "error",
+            "Need at least 4 staged photos to train.",
+        );
         return Err("not_enough_photos".to_string());
     }
 
@@ -534,7 +662,11 @@ pub fn start_character_training(
         );
         let toml_path = set_dir.join("dataset.toml");
         if let Err(e) = fs::write(&toml_path, toml) {
-            set_status(&run, "error", &format!("could not write dataset config: {e}"));
+            set_status(
+                &run,
+                "error",
+                &format!("could not write dataset config: {e}"),
+            );
             return;
         }
 
@@ -550,11 +682,21 @@ pub fn start_character_training(
         let mut c1 = Command::new(&vpy_s);
         c1.current_dir(&repo).args([
             "src/musubi_tuner/zimage_cache_latents.py",
-            "--dataset_config", &toml_s,
-            "--vae", &vae_s,
+            "--dataset_config",
+            &toml_s,
+            "--vae",
+            &vae_s,
         ]);
         if let Err(e) = run_streamed(c1, "latent cache", &run, &cancel, &pid_slot) {
-            set_status(&run, if e == "cancelled" { "cancelled" } else { "error" }, &e);
+            set_status(
+                &run,
+                if e == "cancelled" {
+                    "cancelled"
+                } else {
+                    "error"
+                },
+                &e,
+            );
             return;
         }
 
@@ -563,13 +705,24 @@ pub fn start_character_training(
         let mut c2 = Command::new(&vpy_s);
         c2.current_dir(&repo).args([
             "src/musubi_tuner/zimage_cache_text_encoder_outputs.py",
-            "--dataset_config", &toml_s,
-            "--text_encoder", &te_s,
-            "--batch_size", "8",
+            "--dataset_config",
+            &toml_s,
+            "--text_encoder",
+            &te_s,
+            "--batch_size",
+            "8",
             "--fp8_llm",
         ]);
         if let Err(e) = run_streamed(c2, "text encoder cache", &run, &cancel, &pid_slot) {
-            set_status(&run, if e == "cancelled" { "cancelled" } else { "error" }, &e);
+            set_status(
+                &run,
+                if e == "cancelled" {
+                    "cancelled"
+                } else {
+                    "error"
+                },
+                &e,
+            );
             return;
         }
 
@@ -577,49 +730,109 @@ pub fn start_character_training(
         // + gradient checkpointing + 8-bit optimizer. ComfyUI's model cache
         // would eat the same VRAM the trainer needs — ask it to let go first.
         if crate::commands::process::free_comfyui_memory() {
-            push_log(&run, "Freed ComfyUI's cached models to make room for training.");
+            push_log(
+                &run,
+                "Freed ComfyUI's cached models to make room for training.",
+            );
         }
-        set_status(&run, "running", &format!("Step 3/4: Training ({steps} steps). This runs for a while, live log below..."));
+        set_status(
+            &run,
+            "running",
+            &format!(
+                "Step 3/4: Training ({steps} steps). This runs for a while, live log below..."
+            ),
+        );
         let accelerate = {
             #[cfg(target_os = "windows")]
-            { root.join("venv").join("Scripts").join("accelerate.exe") }
+            {
+                root.join("venv").join("Scripts").join("accelerate.exe")
+            }
             #[cfg(not(target_os = "windows"))]
-            { root.join("venv").join("bin").join("accelerate") }
+            {
+                root.join("venv").join("bin").join("accelerate")
+            }
         };
         let steps_s = steps.to_string();
         let out_name = format!("char_{lora_name}_zimage");
         let mut c3 = Command::new(accelerate);
         c3.current_dir(&repo).args([
-            "launch", "--num_cpu_threads_per_process", "1", "--mixed_precision", "bf16",
+            "launch",
+            "--num_cpu_threads_per_process",
+            "1",
+            "--mixed_precision",
+            "bf16",
             "src/musubi_tuner/zimage_train_network.py",
-            "--dit", &dit_s,
-            "--vae", &vae_s,
-            "--text_encoder", &te_s,
-            "--dataset_config", &toml_s,
-            "--sdpa", "--mixed_precision", "bf16",
-            "--fp8_base", "--fp8_scaled",
-            "--blocks_to_swap", "16",
-            "--timestep_sampling", "shift", "--weighting_scheme", "none", "--discrete_flow_shift", "2.0",
-            "--optimizer_type", "adamw8bit", "--learning_rate", "1e-4", "--gradient_checkpointing",
-            "--max_data_loader_n_workers", "2", "--persistent_data_loader_workers",
-            "--network_module", "networks.lora_zimage", "--network_dim", "32",
-            "--max_train_steps", &steps_s,
-            "--save_precision", "bf16",
-            "--seed", "42",
-            "--output_dir", &out_dir.to_string_lossy(),
-            "--output_name", &out_name,
+            "--dit",
+            &dit_s,
+            "--vae",
+            &vae_s,
+            "--text_encoder",
+            &te_s,
+            "--dataset_config",
+            &toml_s,
+            "--sdpa",
+            "--mixed_precision",
+            "bf16",
+            "--fp8_base",
+            "--fp8_scaled",
+            "--blocks_to_swap",
+            "16",
+            "--timestep_sampling",
+            "shift",
+            "--weighting_scheme",
+            "none",
+            "--discrete_flow_shift",
+            "2.0",
+            "--optimizer_type",
+            "adamw8bit",
+            "--learning_rate",
+            "1e-4",
+            "--gradient_checkpointing",
+            "--max_data_loader_n_workers",
+            "2",
+            "--persistent_data_loader_workers",
+            "--network_module",
+            "networks.lora_zimage",
+            "--network_dim",
+            "32",
+            "--max_train_steps",
+            &steps_s,
+            "--save_precision",
+            "bf16",
+            "--seed",
+            "42",
+            "--output_dir",
+            &out_dir.to_string_lossy(),
+            "--output_name",
+            &out_name,
         ]);
         if let Err(e) = run_streamed(c3, "training", &run, &cancel, &pid_slot) {
-            set_status(&run, if e == "cancelled" { "cancelled" } else { "error" }, &e);
+            set_status(
+                &run,
+                if e == "cancelled" {
+                    "cancelled"
+                } else {
+                    "error"
+                },
+                &e,
+            );
             return;
         }
 
         // 4) convert to the Diffusers key layout ComfyUI loads, straight into
         // the loras dir (musubi's documented `--target other` conversion).
-        set_status(&run, "running", "Step 4/4: Converting the LoRA for ComfyUI...");
+        set_status(
+            &run,
+            "running",
+            "Step 4/4: Converting the LoRA for ComfyUI...",
+        );
         let trained = out_dir.join(format!("{out_name}.safetensors"));
         if !trained.exists() {
-            set_status(&run, "error", "Training finished but the LoRA file was not written.");
+            set_status(
+                &run,
+                "error",
+                "Training finished but the LoRA file was not written.",
+            );
             return;
         }
         let _ = fs::create_dir_all(&loras_dir);
@@ -627,12 +840,23 @@ pub fn start_character_training(
         let mut c4 = Command::new(&vpy_s);
         c4.current_dir(&repo).args([
             "src/musubi_tuner/convert_lora.py",
-            "--input", &trained.to_string_lossy(),
-            "--output", &final_path.to_string_lossy(),
-            "--target", "other",
+            "--input",
+            &trained.to_string_lossy(),
+            "--output",
+            &final_path.to_string_lossy(),
+            "--target",
+            "other",
         ]);
         if let Err(e) = run_streamed(c4, "lora convert", &run, &cancel, &pid_slot) {
-            set_status(&run, if e == "cancelled" { "cancelled" } else { "error" }, &e);
+            set_status(
+                &run,
+                if e == "cancelled" {
+                    "cancelled"
+                } else {
+                    "error"
+                },
+                &e,
+            );
             return;
         }
 
@@ -688,7 +912,10 @@ mod tests {
 
     #[test]
     fn step_counter_parses_tqdm_lines() {
-        assert_eq!(parse_step_counter("steps:  8%|▊| 123/1600 [02:10<26:04]"), Some((123, 1600)));
+        assert_eq!(
+            parse_step_counter("steps:  8%|▊| 123/1600 [02:10<26:04]"),
+            Some((123, 1600))
+        );
         assert_eq!(parse_step_counter("epoch 1/16"), Some((1, 16)));
         assert_eq!(parse_step_counter("no counter here"), None);
         // version-ish fragments with tiny totals are ignored

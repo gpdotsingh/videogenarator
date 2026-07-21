@@ -83,12 +83,24 @@ pub fn get_python_bin() -> String {
 /// fixed-path scan only looked at the bare `C:\PythonXX` drive-root layout.
 #[cfg(target_os = "windows")]
 pub fn get_python_bin() -> String {
-    if let Some(p) = python_via_where() { return p; }
-    if let Some(p) = python_via_py_launcher() { return p; }
-    if let Some(p) = python_in_fixed_paths() { return p; }
-    if let Some(p) = python_in_program_files() { return p; }
-    if let Some(p) = python_in_appdata() { return p; }
-    if let Some(p) = python_in_conda() { return p; }
+    if let Some(p) = python_via_where() {
+        return p;
+    }
+    if let Some(p) = python_via_py_launcher() {
+        return p;
+    }
+    if let Some(p) = python_in_fixed_paths() {
+        return p;
+    }
+    if let Some(p) = python_in_program_files() {
+        return p;
+    }
+    if let Some(p) = python_in_appdata() {
+        return p;
+    }
+    if let Some(p) = python_in_conda() {
+        return p;
+    }
     println!("[Python] No real Python found on PATH or known locations — returning empty sentinel");
     String::new()
 }
@@ -200,7 +212,10 @@ fn scan_python_subdirs(base: &Path, label: &str) -> Option<String> {
         .filter_map(|e| e.ok())
         .filter(|e| {
             e.file_type().ok().map_or(false, |ft| ft.is_dir())
-                && e.file_name().to_string_lossy().to_lowercase().starts_with("python")
+                && e.file_name()
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .starts_with("python")
         })
         .collect();
     dirs.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
@@ -222,10 +237,18 @@ fn scan_python_subdirs(base: &Path, label: &str) -> Option<String> {
 fn python_in_conda() -> Option<String> {
     let userprofile = std::env::var("USERPROFILE").ok()?;
     let candidates = [
-        Path::new(&userprofile).join("miniconda3").join("python.exe"),
+        Path::new(&userprofile)
+            .join("miniconda3")
+            .join("python.exe"),
         Path::new(&userprofile).join("anaconda3").join("python.exe"),
-        Path::new(&userprofile).join("miniconda3").join("Scripts").join("python.exe"),
-        Path::new(&userprofile).join("anaconda3").join("Scripts").join("python.exe"),
+        Path::new(&userprofile)
+            .join("miniconda3")
+            .join("Scripts")
+            .join("python.exe"),
+        Path::new(&userprofile)
+            .join("anaconda3")
+            .join("Scripts")
+            .join("python.exe"),
     ];
     for p in candidates {
         if p.exists() {
@@ -316,7 +339,11 @@ mod tests {
         };
         fs::write(&py, "stub").unwrap();
         let resolved = resolve_comfyui_venv_python(&tmp);
-        assert!(resolved.is_some(), "expected resolver to find {}", py.display());
+        assert!(
+            resolved.is_some(),
+            "expected resolver to find {}",
+            py.display()
+        );
         assert!(resolved.unwrap().contains("venv"));
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -340,7 +367,11 @@ mod tests {
         };
         fs::write(&py, "stub").unwrap();
         let resolved = resolve_comfyui_venv_python(&tmp);
-        assert!(resolved.is_some(), "expected resolver to find {}", py.display());
+        assert!(
+            resolved.is_some(),
+            "expected resolver to find {}",
+            py.display()
+        );
         assert!(resolved.unwrap().contains(".venv"));
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -354,7 +385,9 @@ mod tests {
 
     #[test]
     fn real_python_rejects_windowsapps_stub() {
-        assert!(!is_real_python("C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe"));
+        assert!(!is_real_python(
+            "C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe"
+        ));
     }
 
     #[test]

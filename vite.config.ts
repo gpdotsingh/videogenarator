@@ -2,7 +2,7 @@ import { defineConfig, parseAst, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { spawn, execSync, type ChildProcess } from 'child_process'
-import { existsSync, readdirSync, createWriteStream, mkdirSync, statSync } from 'fs'
+import { existsSync, readdirSync, createWriteStream, mkdirSync, statSync, copyFileSync } from 'fs'
 import { resolve, join, basename } from 'path'
 import https from 'https'
 import http from 'http'
@@ -404,6 +404,44 @@ function comfyLauncher(): Plugin {
 
         next();
       });
+
+      // Keep every completed local video inside this project. ComfyUI owns
+      // generation; this endpoint only copies an already-produced output and
+      // jails both source components under ComfyUI/output.
+      server.middlewares.use('/local-api/archive-generated-video', (req, res) => {
+        let body = ''
+        req.on('data', (chunk: Buffer) => { body += chunk.toString('utf8') })
+        req.on('end', () => {
+          try {
+            const { filename, subfolder = '' } = JSON.parse(body || '{}') as {
+              filename?: string
+              subfolder?: string
+            }
+            if (!filename || basename(filename) !== filename || !/\.(mp4|webm|mov|mkv)$/i.test(filename)) {
+              throw new Error('A valid generated video filename is required')
+            }
+            const comfyPath = findComfyUI()
+            if (!comfyPath) throw new Error('ComfyUI path is not configured')
+            const outputRoot = resolve(comfyPath, 'output')
+            const source = resolve(outputRoot, subfolder, filename)
+            if (source !== outputRoot && !source.startsWith(`${outputRoot}/`)) {
+              throw new Error('Invalid ComfyUI output path')
+            }
+            if (!existsSync(source) || !statSync(source).isFile()) {
+              throw new Error(`Generated video was not found: ${source}`)
+            }
+            const destinationRoot = resolve(__dirname, 'generatedvideo')
+            mkdirSync(destinationRoot, { recursive: true })
+            const destination = join(destinationRoot, filename)
+            copyFileSync(source, destination)
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ path: destination, filename }))
+          } catch (error) {
+            res.writeHead(400, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
+          }
+        })
+      })
 
       // Auto-start Ollama when dev server starts (best-effort, NEVER fatal:
       // a from-source dev run may not have Ollama installed at all — #63

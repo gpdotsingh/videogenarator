@@ -6,8 +6,8 @@ use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 
 use crate::commands::gpu::GpuSelection;
-use crate::commands::whisper::WhisperServer;
 use crate::commands::remote::RemoteServer;
+use crate::commands::whisper::WhisperServer;
 use crate::python::get_python_bin;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -262,7 +262,9 @@ impl AppState {
     pub fn new() -> Self {
         let python_bin = get_python_bin();
         if python_bin.is_empty() {
-            println!("[Python] Resolved: <none — install_python required for ComfyUI / agent code-exec>");
+            println!(
+                "[Python] Resolved: <none — install_python required for ComfyUI / agent code-exec>"
+            );
         } else {
             println!("[Python] Resolved: {}", python_bin);
         }
