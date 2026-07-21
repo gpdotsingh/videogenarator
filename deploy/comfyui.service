@@ -1,0 +1,17 @@
+[Unit]
+Description=ComfyUI CPU video generation service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opc
+Group=opc
+WorkingDirectory=/opt/ComfyUI
+ExecStart=/opt/ComfyUI/.venv/bin/python /opt/ComfyUI/main.py --cpu --listen 127.0.0.1 --port 8188 --disable-auto-launch --preview-method none
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
