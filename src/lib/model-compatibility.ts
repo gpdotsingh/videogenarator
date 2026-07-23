@@ -260,6 +260,18 @@ export function isPlainTextPlanner(modelName: string | null): boolean {
 export type ToolCallingStrategy = 'native' | 'template_fix' | 'hermes_xml'
 
 /**
+ * Hugging Face GGUF imports expose Hermes as a completion-only Ollama model.
+ * They still understand Hermes XML tool tags, but Ollama rejects a native
+ * `tools` payload because the imported manifest has no tools capability.
+ */
+export function isImportedHermesGguf(modelName: string): boolean {
+  const normalized = modelName.toLowerCase()
+  return normalized.startsWith('hf.co/')
+    && normalized.includes('hermes')
+    && normalized.includes('gguf')
+}
+
+/**
  * Determine tool calling strategy for a model.
  * Cloud providers → native. Ollama → check compatibility.
  */
@@ -268,6 +280,8 @@ export function getToolCallingStrategy(modelName: string): ToolCallingStrategy {
 
   // Cloud providers always use native tool calling
   if (providerId === 'openai' || providerId === 'anthropic') return 'native'
+
+  if (isImportedHermesGguf(modelName)) return 'hermes_xml'
 
   // Ollama
   return isAgentCompatible(modelName) ? 'native' : 'hermes_xml'

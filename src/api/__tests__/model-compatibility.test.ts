@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   isAgentCompatible,
+  isImportedHermesGguf,
   getToolCallingStrategy,
   getRecommendedAgentModels,
 } from '../../lib/model-compatibility'
@@ -154,6 +155,18 @@ describe('getToolCallingStrategy', () => {
 
   it('Ollama unknown models use hermes_xml', () => {
     expect(getToolCallingStrategy('dolphin3:8b')).toBe('hermes_xml')
+  })
+
+  it('uses Hermes XML for completion-only Hugging Face GGUF imports', () => {
+    const model = 'hf.co/NousResearch/Hermes-3-Llama-3.2-3B-GGUF:Q4_K_M'
+
+    expect(isImportedHermesGguf(model)).toBe(true)
+    expect(getToolCallingStrategy(model)).toBe('hermes_xml')
+  })
+
+  it('keeps official Ollama Hermes models on native tool calling', () => {
+    expect(isImportedHermesGguf('hermes3:8b')).toBe(false)
+    expect(getToolCallingStrategy('hermes3:8b')).toBe('native')
   })
 
   it('OpenAI models always use native', () => {
